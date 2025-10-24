@@ -1,0 +1,5 @@
+{
+  "name": "Pimpit.ro B2B Product Catalog",
+  "description": "A web application that displays product information from a Google Sheet in a B2B platform style. It calculates and shows prices in RON based on a specific formula.",
+  "requestFramePermissions": []
+}
