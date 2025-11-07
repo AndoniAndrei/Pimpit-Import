@@ -13,7 +13,7 @@ const keysToNormalize: (keyof Product)[] = ['Size', 'Width', 'Offset', 'CB', 'Lo
 export const normalizeProductAttributes = (product: Product): Product => {
   const normalizedProduct = { ...product };
 
-  // Trim all string values first
+  // Trim all string values first 
   for (const key in normalizedProduct) {
     if (typeof normalizedProduct[key] === 'string') {
       normalizedProduct[key] = String(normalizedProduct[key]).trim();
