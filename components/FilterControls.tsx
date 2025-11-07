@@ -1,3 +1,4 @@
+
 import React from 'react';
 import SearchBar from './SearchBar';
 import { Filters, AvailableOptions, FilterMode } from '../types';
@@ -78,10 +79,11 @@ const FilterControls: React.FC<FilterControlsProps> = ({
   return (
     <div className="bg-white p-4 rounded-lg shadow-md mb-8 space-y-4">
       {/* Search and Base Filters */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <div className="md:col-span-2">
             <SearchBar searchTerm={filters.searchTerm} setSearchTerm={handleSearchChange} />
         </div>
+        {renderSelect('ProductType', 'Tip Produs', availableOptions.ProductType)}
         {renderSelect('Brand', 'Toate Brandurile', availableOptions.Brand)}
         {renderSelect('Finish', 'Toate Culorile', availableOptions.Finish)}
       </div>

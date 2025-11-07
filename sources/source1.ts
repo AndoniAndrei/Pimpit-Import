@@ -23,6 +23,7 @@ const map = (data: Product[]): Product[] => {
         ImageUrl: imageUrls[0],
         ImageUrls: imageUrls,
         Source: 'Sursa 1',
+        ProductType: 'Jante',
       };
 
       return normalizeProductAttributes(product);
@@ -32,6 +33,7 @@ const map = (data: Product[]): Product[] => {
 export const source1: DataSource = {
   name: 'Sursa 1',
   url: 'https://docs.google.com/spreadsheets/d/1AFZLyen_l9P5JxBYlTyVCQocZt3X8IAU-Jh785Gseos/export?format=csv&gid=187323146',
+  type: 'csv',
   parserConfig: {
     requiredHeaders: ['partnumber', 'brand', 'pret client in lei/buc'],
   },

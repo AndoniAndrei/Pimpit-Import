@@ -11,6 +11,7 @@ export interface Filters {
     Finish: string;
     Size: string;
     PCD: string;
+    ProductType: string;
     // Standard filters
     Width: string;
     Offset: string;
@@ -26,6 +27,7 @@ export interface AvailableOptions {
     Finish: string[];
     Size: string[];
     PCD: string[];
+    ProductType: string[];
     Width: string[];
     Offset: string[];
     Width_Front: string[];
@@ -40,7 +42,9 @@ export interface ParserConfig {
 
 export interface DataSource {
   name: string;
-  url: string;
+  url?: string; // Made optional to support fetcher
+  type?: 'csv' | 'xml';
   parserConfig: ParserConfig;
   map: (data: any[]) => Product[];
+  fetcher?: () => Promise<Response>; // Added custom fetcher for resilient sources
 }

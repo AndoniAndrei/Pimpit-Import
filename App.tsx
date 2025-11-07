@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
-import { Product, Filters, AvailableOptions, FilterMode } from './types';
+import { Product, Filters, AvailableOptions, FilterMode, DataSource } from './types';
 import ProductCard from './components/ProductCard';
 import FilterControls from './components/FilterControls';
 import Spinner from './components/Spinner';
 import { allSources } from './sources';
 import { parseCSVData } from './utils/csvParser';
+import { parseXMLData } from './utils/xmlParser';
 
 const ProductModal = lazy(() => import('./components/ProductModal'));
 
@@ -23,6 +24,7 @@ const App: React.FC = () => {
     Finish: 'all',
     Size: 'all',
     PCD: 'all',
+    ProductType: 'all',
     Width: 'all',
     Offset: 'all',
     Width_Front: 'all',
@@ -46,25 +48,35 @@ const App: React.FC = () => {
 
       const errors: string[] = [];
 
-      const processSource = async (source: typeof allSources[0]) => {
+      const processSource = async (source: DataSource) => {
          try {
             const fetchOptions: RequestInit = { cache: 'no-store' }; // Ensure fresh fetch
-            const res = await fetch(source.url, fetchOptions);
+            
+            // Use custom fetcher if available, otherwise use standard fetch with URL
+            const res = source.fetcher 
+                ? await source.fetcher()
+                : await fetch(source.url!, fetchOptions);
 
             if (!res.ok) {
               throw new Error(`nu a putut fi încărcată (status: ${res.status}).`);
             }
 
-            const csvText = await res.text();
-            if (!csvText.trim()) {
+            const text = await res.text();
+            if (!text.trim()) {
               throw new Error('este un fișier gol.');
             }
+            
+            const isXml = source.type === 'xml';
+            const parsedData = isXml
+                ? parseXMLData(text)
+                : parseCSVData(text, source.parserConfig.requiredHeaders);
 
-            const parsedData = parseCSVData(csvText, source.parserConfig.requiredHeaders);
             const mappedData = source.map(parsedData);
             
             if (mappedData.length === 0) {
-              throw new Error('Nu s-au putut importa produse. Verificați structura fișierului.');
+              // This is not necessarily an error, could be an empty valid file.
+              // We'll log it for debugging but won't show a user-facing error.
+              console.warn(`Sursa ${source.name} a returnat 0 produse după mapare.`);
             }
             
             return mappedData;
@@ -107,7 +119,7 @@ const App: React.FC = () => {
 
   const baseFilteredProducts = useMemo(() => {
     return products.filter(product => {
-      const { searchTerm, Brand, Finish, Size, PCD } = filters;
+      const { searchTerm, Brand, Finish, Size, PCD, ProductType } = filters;
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
         const name = String(product['PartDescription'] || '').toLowerCase();
@@ -119,6 +131,7 @@ const App: React.FC = () => {
       if (Finish !== 'all' && product['Finish'] !== Finish) return false;
       if (Size !== 'all' && String(product['Size']) !== Size) return false;
       if (PCD !== 'all' && product['PCD'] !== PCD) return false;
+      if (ProductType !== 'all' && product['ProductType'] !== ProductType) return false;
       return true;
     });
   }, [products, filters]);
@@ -128,12 +141,20 @@ const App: React.FC = () => {
       const values = [...new Set(items.map(p => p[key]).filter(Boolean))];
       return values.sort((a,b) => String(a).localeCompare(String(b), undefined, {numeric: true}));
     };
+    
+    // Base filter for dependent dropdowns
+    const preFilteredProducts = products.filter(p => {
+        if(filters.searchTerm && !(String(p['PartDescription']||'').toLowerCase().includes(filters.searchTerm.toLowerCase()) || String(p['PartNumber']||'').toLowerCase().includes(filters.searchTerm.toLowerCase()) || String(p['EAN']||'').toLowerCase().includes(filters.searchTerm.toLowerCase()))) return false;
+        if(filters.ProductType !== 'all' && p.ProductType !== filters.ProductType) return false;
+        return true;
+    });
 
     const newOptions: AvailableOptions = {
-        Brand: getUniqueSortedValues(products.filter(p => filters.searchTerm ? (String(p['PartDescription']||'').toLowerCase().includes(filters.searchTerm.toLowerCase()) || String(p['PartNumber']||'').toLowerCase().includes(filters.searchTerm.toLowerCase()) || String(p['EAN']||'').toLowerCase().includes(filters.searchTerm.toLowerCase())) : true), 'Brand'),
-        Finish: getUniqueSortedValues(products.filter(p => filters.Brand === 'all' || p.Brand === filters.Brand), 'Finish'),
-        Size: getUniqueSortedValues(products.filter(p => (filters.Brand === 'all' || p.Brand === filters.Brand) && (filters.Finish === 'all' || p.Finish === filters.Finish)), 'Size'),
-        PCD: getUniqueSortedValues(products.filter(p => (filters.Brand === 'all' || p.Brand === filters.Brand) && (filters.Finish === 'all' || p.Finish === filters.Finish) && (filters.Size === 'all' || String(p.Size) === filters.Size)), 'PCD'),
+        ProductType: getUniqueSortedValues(products, 'ProductType'),
+        Brand: getUniqueSortedValues(preFilteredProducts, 'Brand'),
+        Finish: getUniqueSortedValues(preFilteredProducts.filter(p => filters.Brand === 'all' || p.Brand === filters.Brand), 'Finish'),
+        Size: getUniqueSortedValues(preFilteredProducts.filter(p => (filters.Brand === 'all' || p.Brand === filters.Brand) && (filters.Finish === 'all' || p.Finish === filters.Finish)), 'Size'),
+        PCD: getUniqueSortedValues(preFilteredProducts.filter(p => (filters.Brand === 'all' || p.Brand === filters.Brand) && (filters.Finish === 'all' || p.Finish === filters.Finish) && (filters.Size === 'all' || String(p.Size) === filters.Size)), 'PCD'),
         Width: [], Offset: [], Width_Front: [], Offset_Front: [], Width_Rear: [], Offset_Rear: []
     };
 
@@ -158,6 +179,7 @@ const App: React.FC = () => {
         changed = true;
       }
     };
+    checkAndReset('Brand', availableOptions.Brand);
     checkAndReset('Finish', availableOptions.Finish);
     checkAndReset('Size', availableOptions.Size);
     checkAndReset('PCD', availableOptions.PCD);

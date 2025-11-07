@@ -41,6 +41,7 @@ const map = (data: Product[]): Product[] => {
         Stock: parseInt(p['STOCK'], 10) || 0,
         Price: calculatedPrice,
         Source: 'Sursa 2',
+        ProductType: 'Jante',
       };
 
       return normalizeProductAttributes(product);
@@ -50,6 +51,7 @@ const map = (data: Product[]): Product[] => {
 export const source2: DataSource = {
   name: 'Sursa 2',
   url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTq1-FVmTlr588SwWJHqpPg9R9dW2M60QjR5bFmP20Wp-q5T0b1gc4krXy0b0ePi8_fkBc39ea8RbPS/pub?output=csv',
+  type: 'csv',
   parserConfig: {
     // Using the exact headers from the user's file
     requiredHeaders: ['uid', 'brand', 'price'],

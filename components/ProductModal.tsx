@@ -33,11 +33,12 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {
   
   const displayedKeys = new Set([
       'PartNumber', 'PartDescription', 'Brand', 'Price', 'Stock', 'OnTheWaterStock', 
-      'ImageUrl', 'ImageUrls', 'Source', 'Model', 'TuvUrl',
+      'ImageUrl', 'ImageUrls', 'Source', 'Model', 'TuvUrl', 'YoutubeUrl', 'ThreeSixtyImageUrl', 'Description', 'ProductType',
       // Original keys from source files that are now unified
-      'Pret client in lei/buc', '7001', 'On the water', 
-      'Image URL', 'Image URL 1', 'Image URL 2', 'Image URL 3', 'Image URL 4', 
-      'SKU', 'PRICE_RON', 'STOCK_RO', 'IMAGE', 'COLOR',
+      'Pret client in lei/buc', '7001', 'On the water', 'Image URL', 'Image URL 1', 'Image URL 2', 'Image URL 3', 'Image URL 4', 
+      'SKU', 'PRICE_RON', 'STOCK_RO', 'IMAGE', 'COLOR', 'UID', 'PRICE', 'DESIGN', 'IMG',
+      'brand', 'name', 'model', 'part_number', 'your_net_price', 'suggested_retail_price', 'ean', 'photo', 'photo1', 'photo2', 'photo3', 'photo4', 'photo5',
+      'link_3d', 'youtube_link', 'description', 'decsription',
       ''
   ]);
 
@@ -55,6 +56,18 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {
   const stock = product['Stock'] || 0;
   const onTheWater = product['OnTheWaterStock'] || 0;
   const hasStock = stock > 0;
+
+  const getYoutubeEmbedUrl = (url: string) => {
+      if (!url) return null;
+      try {
+          const urlObj = new URL(url);
+          const videoId = urlObj.searchParams.get('v') || urlObj.pathname.split('/').pop();
+          return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
+      } catch (e) {
+          return null;
+      }
+  }
+  const youtubeEmbedUrl = getYoutubeEmbedUrl(product.YoutubeUrl);
 
   return (
     <div
@@ -121,19 +134,45 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {
              <div className="text-sm text-gray-600 mt-4 space-y-2">
                 <p>Stoc Depozit: <strong className={hasStock ? "text-green-600" : "text-red-600"}>{stock} buc.</strong></p>
                 {onTheWater > 0 && <p>Stoc "On the water": <strong className="text-blue-600">{onTheWater} buc.</strong></p>}
+                {product.next_delivery && <p>Următoarea livrare: <strong className="text-purple-600">{product.next_delivery}</strong></p>}
              </div>
+              {product.ThreeSixtyImageUrl && (
+                  <div className="mt-4 text-right">
+                      <a href={product.ThreeSixtyImageUrl} target="_blank" rel="noopener noreferrer" className="inline-block px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm font-semibold shadow-sm">
+                          Vizualizare 3D
+                      </a>
+                  </div>
+              )}
            </div>
-
-           <div className="flex-grow">
-               <h4 className="text-lg font-semibold text-gray-800 mb-3">Specificații</h4>
-                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                    {otherDetails.map(([key, value]) => (
-                        <div key={key} className="bg-gray-50 p-2 rounded-md">
-                            <dt className="font-medium text-gray-500 truncate">{key}</dt>
-                            <dd className="text-gray-900 font-semibold truncate">{String(value)}</dd>
-                        </div>
-                    ))}
-                </dl>
+           
+           <div className="flex-grow space-y-6">
+               {youtubeEmbedUrl && (
+                   <div>
+                       <h4 className="text-lg font-semibold text-gray-800 mb-3">Video Prezentare</h4>
+                       <div className="aspect-w-16 aspect-h-9">
+                           <iframe src={youtubeEmbedUrl} frameBorder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen title="Video Produs" className="w-full h-full rounded-lg shadow-md"></iframe>
+                       </div>
+                   </div>
+               )}
+               
+               {product.Description && (
+                    <div>
+                        <h4 className="text-lg font-semibold text-gray-800 mb-3">Descriere</h4>
+                        <p className="text-sm text-gray-600 whitespace-pre-wrap">{product.Description}</p>
+                    </div>
+               )}
+               
+               <div>
+                 <h4 className="text-lg font-semibold text-gray-800 mb-3">Specificații</h4>
+                  <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                      {otherDetails.map(([key, value]) => (
+                          <div key={key} className="bg-gray-50 p-2 rounded-md">
+                              <dt className="font-medium text-gray-500 truncate">{key}</dt>
+                              <dd className="text-gray-900 font-semibold truncate">{String(value)}</dd>
+                          </div>
+                      ))}
+                  </dl>
+               </div>
            </div>
         </div>
       </div>
