@@ -1,114 +1,18 @@
-import React, { useState, useEffect, useMemo } from 'react';
+
+import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import { Product, Filters, AvailableOptions, FilterMode } from './types';
 import ProductCard from './components/ProductCard';
 import FilterControls from './components/FilterControls';
 import Spinner from './components/Spinner';
-import ProductModal from './components/ProductModal';
+import { allSources } from './sources';
+import { parseCSVData } from './utils/csvParser';
 
-// Noul URL, direct către fișierul CSV public și funcțional
-const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1AFZLyen_l9P5JxBYlTyVCQocZt3X8IAU-Jh785Gseos/export?format=csv&gid=187323146';
-
-// Funcție ajutătoare pentru a detecta separatorul (virgulă vs. punct și virgulă)
-const getDelimiter = (line: string): string => {
-  const commaCount = (line.match(/,/g) || []).length;
-  const semicolonCount = (line.match(/;/g) || []).length;
-  if (semicolonCount > commaCount && semicolonCount > 0) {
-    return ';';
-  }
-  return ',';
-};
-
-// Parser CSV complet, care gestionează rânduri multi-linie, ghilimele și separatori
-const parseFullCsv = (text: string): string[][] => {
-    const table: string[][] = [];
-    if (!text) return table;
-    const firstLines = text.substring(0, 1000);
-    const delimiter = getDelimiter(firstLines);
-    let currentRow: string[] = [];
-    let currentVal = '';
-    let inQuotes = false;
-    for (let i = 0; i < text.length; i++) {
-        const char = text[i];
-        if (inQuotes) {
-            if (char === '"') {
-                if (i + 1 < text.length && text[i + 1] === '"') {
-                    currentVal += '"';
-                    i++;
-                } else {
-                    inQuotes = false;
-                }
-            } else {
-                currentVal += char;
-            }
-        } else {
-            if (char === '"') {
-                inQuotes = true;
-            } else if (char === delimiter) {
-                currentRow.push(currentVal);
-                currentVal = '';
-            } else if (char === '\r' || char === '\n') {
-                currentRow.push(currentVal);
-                table.push(currentRow);
-                currentRow = [];
-                currentVal = '';
-                if (char === '\r' && i + 1 < text.length && text[i + 1] === '\n') {
-                    i++;
-                }
-            } else {
-                currentVal += char;
-            }
-        }
-    }
-    currentRow.push(currentVal);
-    if (currentRow.length > 0 && currentRow.some(val => val && val.trim() !== '')) {
-      table.push(currentRow);
-    }
-    return table;
-};
-
-// Funcție robustă pentru a interpreta textul CSV
-const parseCSV = (text: string): Product[] => {
-  if (text.charCodeAt(0) === 0xFEFF) {
-    text = text.slice(1);
-  }
-  const table = parseFullCsv(text);
-  if (table.length === 0) {
-      console.error("Parsarea CSV a rezultat într-un tabel gol.");
-      throw new Error("Fișierul CSV este gol sau are un format neașteptat.");
-  }
-  let headerIndex = -1;
-  let headers: string[] = [];
-  for (let i = 0; i < table.length; i++) {
-    const potentialHeaders = table[i].map(h => h ? h.trim() : '');
-    const lowercasedHeaders = potentialHeaders.map(h => h.toLowerCase());
-    if (lowercasedHeaders.includes('partnumber') && lowercasedHeaders.includes('brand') && lowercasedHeaders.includes('pret client in lei/buc')) {
-      headerIndex = i;
-      headers = potentialHeaders.map(h => h.replace(/\r?\n|\r/g, ' ').trim());
-      break;
-    }
-  }
-  if (headerIndex === -1) {
-    const firstLinesForError = text.split(/\r\n|\n|\r/).slice(0, 10).join('\n');
-    console.error("Antetul CSV nu a putut fi găsit. Verificați structura fișierului. Primele 10 linii:", firstLinesForError);
-    throw new Error("Antetul CSV (linia cu 'PartNumber', 'Brand', etc.) nu a putut fi găsit. Verificați dacă fișierul este corect și accesibil public.");
-  }
-  const dataRows = table.slice(headerIndex + 1);
-  const products = dataRows.map(row => {
-    if (row.every(cell => !cell || !cell.trim())) return null;
-    const product: Product = {};
-    headers.forEach((header, index) => {
-        if (header && index < row.length) {
-            product[header] = row[index];
-        }
-    });
-    return product;
-  });
-  return products.filter((p): p is Product => p !== null);
-};
+const ProductModal = lazy(() => import('./components/ProductModal'));
 
 const App: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [loadingMessage, setLoadingMessage] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [filterMode, setFilterMode] = useState<FilterMode>('standard');
@@ -132,21 +36,70 @@ const App: React.FC = () => {
     const fetchProducts = async () => {
       setLoading(true);
       setError(null);
+      setProducts([]); // Ensure fresh data on every load
+
+      if (allSources.length === 0) {
+        setError("Nicio sursă de date nu este configurată. Verificați directorul 'sources'.");
+        setLoading(false);
+        return;
+      }
+
+      const errors: string[] = [];
+
+      const processSource = async (source: typeof allSources[0]) => {
+         try {
+            const fetchOptions: RequestInit = { cache: 'no-store' }; // Ensure fresh fetch
+            const res = await fetch(source.url, fetchOptions);
+
+            if (!res.ok) {
+              throw new Error(`nu a putut fi încărcată (status: ${res.status}).`);
+            }
+
+            const csvText = await res.text();
+            if (!csvText.trim()) {
+              throw new Error('este un fișier gol.');
+            }
+
+            const parsedData = parseCSVData(csvText, source.parserConfig.requiredHeaders);
+            const mappedData = source.map(parsedData);
+            
+            if (mappedData.length === 0) {
+              throw new Error('Nu s-au putut importa produse. Verificați structura fișierului.');
+            }
+            
+            return mappedData;
+          } catch (e) {
+            console.error(`Error processing ${source.name}:`, e);
+            const errorMessage = e instanceof Error ? e.message : 'Eroare necunoscută la procesare.';
+            errors.push(`${source.name}: ${errorMessage}`);
+            return []; // Return empty array on error for this source
+          }
+      };
+
       try {
-        const response = await fetch(SHEET_URL);
-        if (!response.ok) throw new Error(`Eroare de rețea. Status: ${response.status}`);
-        const contentType = response.headers.get('content-type');
-        if (!contentType || !contentType.includes('text/csv')) throw new Error('Fișierul primit nu este în format CSV valid. Este posibil ca link-ul să fie invalid sau să necesite autentificare.');
-        const csvText = await response.text();
-        const data = parseCSV(csvText);
-        if (!Array.isArray(data)) throw new Error("Fișierul este gol sau formatat incorect. Niciun produs nu a putut fi încărcat.");
-        const processedData = data.filter(p => p && p['PartNumber'] && String(p['PartNumber']).trim() !== '');
-        setProducts(processedData);
+        setLoadingMessage(`Se încarcă sursele...`);
+        
+        const promises = allSources.map(source => {
+          setLoadingMessage(`Se încarcă ${source.name}...`);
+          return processSource(source).then(newProducts => {
+            if (newProducts.length > 0) {
+               setProducts(prevProducts => [...prevProducts, ...newProducts]);
+            }
+          });
+        });
+
+        await Promise.all(promises);
+
+        if (errors.length > 0) {
+            setError(errors.join(' '));
+        }
+
       } catch (e) {
-        if (e instanceof Error) setError(e.message);
-        else setError('A apărut o eroare necunoscută.');
+        const errorMessage = e instanceof Error ? e.message : 'A apărut o eroare necunoscută.';
+        setError(`A apărut o eroare la încărcarea produselor: ${errorMessage}`);
       } finally {
         setLoading(false);
+        setLoadingMessage('');
       }
     };
     fetchProducts();
@@ -194,7 +147,7 @@ const App: React.FC = () => {
     newOptions.Offset_Rear = getUniqueSortedValues(baseFilteredProducts.filter(p => filters.Width_Rear === 'all' || String(p.Width) === filters.Width_Rear), 'Offset');
     
     return newOptions;
-  }, [products, filters]);
+  }, [products, filters, baseFilteredProducts]);
 
   useEffect(() => {
     const newFilters = { ...filters };
@@ -267,7 +220,7 @@ const App: React.FC = () => {
     <div className="container mx-auto p-4 md:p-8">
       <header className="text-center mb-8">
         <h1 className="text-4xl md:text-5xl font-bold text-gray-800">Catalog Produse B2B</h1>
-        <p className="text-gray-500 mt-2">7001 Stock Wheels</p>
+        <p className="text-gray-500 mt-2">Catalog Furnizori Piese Auto</p>
       </header>
       
       <FilterControls
@@ -280,12 +233,13 @@ const App: React.FC = () => {
       />
 
       <main>
-        {loading ? <Spinner /> : error ? (
+        {loading ? <Spinner message={loadingMessage} /> : error ? (
           <div className="text-center text-red-500 bg-red-100 p-4 rounded-lg"><p className="font-bold">A apărut o eroare</p><p>{error}</p></div>
         ) : (
           <>
             <div className="text-left text-gray-600 mb-4">
                 Afișare <strong>{filteredProducts.length}</strong> din <strong>{products.length}</strong> produse.
+                {products.length === 0 && !loading && <span className="ml-2">Niciun produs nu a putut fi încărcat.</span>}
             </div>
             
             {filteredProducts.length > 0 ? (
@@ -319,7 +273,9 @@ const App: React.FC = () => {
         )}
       </main>
       
-      {selectedProduct && <ProductModal product={selectedProduct} onClose={handleCloseModal} />}
+      <Suspense fallback={<Spinner message="Se încarcă detaliile..." />}>
+        {selectedProduct && <ProductModal product={selectedProduct} onClose={handleCloseModal} />}
+      </Suspense>
 
     </div>
   );

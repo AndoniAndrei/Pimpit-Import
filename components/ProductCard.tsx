@@ -7,17 +7,6 @@ interface ProductCardProps {
   onProductClick: (product: Product) => void;
 }
 
-const getFirstImageUrl = (product: Product): string | undefined => {
-  const imageKeys = ['Image URL', 'Image URL 1', 'Image URL 2', 'Image URL 3', 'Image URL 4'];
-  for (const key of imageKeys) {
-    const url = product[key];
-    if (url && typeof url === 'string' && url.trim().startsWith('http')) {
-      return url.trim();
-    }
-  }
-  return undefined;
-};
-
 const cleanValue = (value: any): string => {
     const strValue = String(value || '');
     return strValue.trim().toUpperCase() === '#N/A' ? '' : strValue;
@@ -25,35 +14,17 @@ const cleanValue = (value: any): string => {
 
 
 const ProductCard: React.FC<ProductCardProps> = ({ product, onProductClick }) => {
-  const parseAndFormatPrice = (priceValue: any): string => {
-    const formatter = new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' });
-    
-    if (typeof priceValue === 'number') {
-        return formatter.format(priceValue);
-    }
-    
-    if (typeof priceValue !== 'string' || !priceValue) {
-        return formatter.format(0);
-    }
-    
-    let cleanValue = priceValue.replace(/[^0-9.,-]/g, '');
-    cleanValue = cleanValue.replace(/\./g, '').replace(',', '.');
-    
-    const finalPrice = parseFloat(cleanValue) || 0;
-    return formatter.format(finalPrice);
-  };
+  const formattedPrice = new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(product['Price'] || 0);
   
-  const formattedPrice = parseAndFormatPrice(product['Pret client in lei/buc']);
-
   const placeholderImage = `https://via.placeholder.com/400x300.png?text=Imagine+indisponibila`;
-  const imageUrl = getFirstImageUrl(product);
+  const imageUrl = product['ImageUrl'];
   const productName = cleanValue(product['PartDescription']);
   const productBrand = cleanValue(product['Brand']);
   const productCode = cleanValue(product['PartNumber']);
 
-  const stock7001 = parseInt(product['7001'], 10) || 0;
-  const onTheWater = parseInt(product['On the water'], 10) || 0;
-  const hasStock = stock7001 > 0;
+  const stock = product['Stock'] || 0;
+  const onTheWater = product['OnTheWaterStock'] || 0;
+  const hasStock = stock > 0;
 
   return (
     <button
@@ -72,6 +43,8 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onProductClick }) =>
         <div className="absolute top-2 right-2">
             {hasStock ? (
                 <span className="text-xs font-bold text-green-800 bg-green-200 px-2 py-1 rounded-full shadow">În Stoc</span>
+            ) : onTheWater > 0 ? (
+                <span className="text-xs font-bold text-blue-800 bg-blue-200 px-2 py-1 rounded-full shadow">Precomandă</span>
             ) : (
                 <span className="text-xs font-bold text-red-800 bg-red-200 px-2 py-1 rounded-full shadow">Stoc Epuizat</span>
             )}
@@ -87,7 +60,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onProductClick }) =>
         </div>
         
         <div className="text-sm text-gray-600 mt-2 flex-grow min-h-[40px]">
-          <p>Stoc Depozit: <strong className={hasStock ? "text-green-600" : "text-red-600"}>{stock7001} buc.</strong></p>
+          <p>Stoc Depozit: <strong className={hasStock ? "text-green-600" : "text-red-600"}>{stock} buc.</strong></p>
           {onTheWater > 0 && <p>Stoc "On the water": <strong className="text-blue-600">{onTheWater} buc.</strong></p>}
         </div>
 
@@ -100,4 +73,4 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onProductClick }) =>
   );
 };
 
-export default ProductCard;
+export default React.memo(ProductCard);

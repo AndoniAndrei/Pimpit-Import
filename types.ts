@@ -1,3 +1,4 @@
+
 export interface Product {
   [key: string]: any;
 }
@@ -31,4 +32,15 @@ export interface AvailableOptions {
     Offset_Front: string[];
     Width_Rear: string[];
     Offset_Rear: string[];
+}
+
+export interface ParserConfig {
+  requiredHeaders: string[];
+}
+
+export interface DataSource {
+  name: string;
+  url: string;
+  parserConfig: ParserConfig;
+  map: (data: any[]) => Product[];
 }

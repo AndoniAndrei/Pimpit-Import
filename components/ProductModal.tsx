@@ -7,33 +7,13 @@ interface ProductModalProps {
   onClose: () => void;
 }
 
-const getAllImageUrls = (product: Product): string[] => {
-  const urls: string[] = [];
-  const imageKeys = ['Image URL', 'Image URL 1', 'Image URL 2', 'Image URL 3', 'Image URL 4'];
-  for (const key of imageKeys) {
-    const url = product[key];
-    if (url && typeof url === 'string' && url.trim().startsWith('http')) {
-      urls.push(url.trim());
-    }
-  }
-  return urls;
-};
-
-const parseAndFormatPrice = (priceValue: any): string => {
-    const formatter = new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' });
-    if (typeof priceValue === 'number') return formatter.format(priceValue);
-    if (typeof priceValue !== 'string' || !priceValue) return formatter.format(0);
-    let cleanValue = priceValue.replace(/[^0-9.,-]/g, '').replace(/\./g, '').replace(',', '.');
-    return formatter.format(parseFloat(cleanValue) || 0);
-};
-
 const cleanValue = (value: any): string => {
     const strValue = String(value || '');
     return strValue.trim().toUpperCase() === '#N/A' ? '' : strValue;
 };
 
 const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {
-  const imageUrls = useMemo(() => getAllImageUrls(product), [product]);
+  const imageUrls = useMemo(() => product['ImageUrls'] || [], [product]);
   const [mainImage, setMainImage] = useState<string>(imageUrls[0] || `https://via.placeholder.com/600x450.png?text=Imagine+indisponibila`);
   const placeholderImage = `https://via.placeholder.com/600x450.png?text=Imagine+indisponibila`;
 
@@ -51,7 +31,16 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {
     };
   }, [onClose]);
   
-  const displayedKeys = new Set(['PartNumber', 'PartDescription', 'Brand', 'Pret client in lei/buc', '7001', 'On the water', 'Image URL', 'Image URL 1', 'Image URL 2', 'Image URL 3', 'Image URL 4', '']);
+  const displayedKeys = new Set([
+      'PartNumber', 'PartDescription', 'Brand', 'Price', 'Stock', 'OnTheWaterStock', 
+      'ImageUrl', 'ImageUrls', 'Source', 'Model', 'TuvUrl',
+      // Original keys from source files that are now unified
+      'Pret client in lei/buc', '7001', 'On the water', 
+      'Image URL', 'Image URL 1', 'Image URL 2', 'Image URL 3', 'Image URL 4', 
+      'SKU', 'PRICE_RON', 'STOCK_RO', 'IMAGE', 'COLOR',
+      ''
+  ]);
+
   const otherDetails = Object.entries(product).filter(([key, value]) => 
     !displayedKeys.has(key) && 
     value && 
@@ -63,9 +52,9 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {
   const productDescription = cleanValue(product['PartDescription']);
   const productCode = cleanValue(product['PartNumber']);
 
-  const stock7001 = parseInt(product['7001'], 10) || 0;
-  const onTheWater = parseInt(product['On the water'], 10) || 0;
-  const hasStock = stock7001 > 0;
+  const stock = product['Stock'] || 0;
+  const onTheWater = product['OnTheWaterStock'] || 0;
+  const hasStock = stock > 0;
 
   return (
     <div
@@ -86,7 +75,10 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {
                     src={mainImage}
                     alt={productDescription}
                     className="max-w-full max-h-96 object-contain rounded-md"
-                    onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }}
+                    onError={(e) => { 
+                      (e.target as HTMLImageElement).src = placeholderImage; 
+                      setMainImage(placeholderImage);
+                    }}
                 />
             </div>
             {imageUrls.length > 1 && (
@@ -123,11 +115,11 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {
            
            <div className="mb-6 pb-6 border-b border-gray-200">
              <div className="text-right">
-                <span className="text-3xl font-extrabold text-blue-600">{parseAndFormatPrice(product['Pret client in lei/buc'])}</span>
+                <span className="text-3xl font-extrabold text-blue-600">{new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(product['Price'] || 0)}</span>
                 <p className="text-sm text-gray-500">TVA inclus</p>
              </div>
              <div className="text-sm text-gray-600 mt-4 space-y-2">
-                <p>Stoc Depozit: <strong className={hasStock ? "text-green-600" : "text-red-600"}>{stock7001} buc.</strong></p>
+                <p>Stoc Depozit: <strong className={hasStock ? "text-green-600" : "text-red-600"}>{stock} buc.</strong></p>
                 {onTheWater > 0 && <p>Stoc "On the water": <strong className="text-blue-600">{onTheWater} buc.</strong></p>}
              </div>
            </div>
