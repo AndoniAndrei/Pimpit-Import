@@ -3,32 +3,28 @@ import { normalizeProductAttributes } from '../utils/productUtils';
 
 const map = async (data: Product[]): Promise<Product[]> => {
   const initialProducts = data
-    .filter(p => p && p.producer_code && String(p.producer_code).trim() !== '')
+    .filter(p => p && p.Articlecode && String(p.Articlecode).trim() !== '')
     .map(p => {
       // Price Calculation: ((((pret de achizitie*4)*1.21)*1.4)*5)/4
-      const purchasePriceStr = String(p.price || '0').replace(',', '.');
+      const purchasePriceStr = String(p['Nett-price'] || '0').replace(',', '.');
       const purchasePrice = parseFloat(purchasePriceStr) || 0;
       const calculatedPrice = Math.round(((((purchasePrice * 4) * 1.21) * 1.4) * 5) / 4);
 
-      const imageUrl = p.photo_url;
+      const imageUrl = p['URL-to-photo'];
       const imageUrls = imageUrl ? [imageUrl] : [];
 
-      // Clean quotes from text fields as requested
-      const productName = String(p.name || '').replace(/"/g, '').trim();
-      const productFinish = String(p.finish || '').replace(/"/g, '').trim();
-
       const product: Product = {
-        PartNumber: p.producer_code,
-        Brand: p.producer,
-        Model: p.model,
-        PartDescription: productName,
-        Finish: productFinish,
-        Size: p.size,
-        Width: p.width,
-        PCD: p.pcd,
-        Offset: p.et,
-        CB: p.cb,
-        Stock: parseInt(String(p.stock), 10) || 0,
+        PartNumber: p.Articlecode,
+        Brand: p.Brand,
+        Model: p.Model,
+        PartDescription: p.Description,
+        Finish: p.Color,
+        Size: p.Inch,
+        Width: p.Width,
+        PCD: p.PCD,
+        Offset: p.Offset,
+        CB: p.Centerhole,
+        Stock: parseInt(String(p.Stock), 10) || 0,
         Price: calculatedPrice,
         ImageUrl: imageUrl,
         ImageUrls: imageUrls,
@@ -62,28 +58,13 @@ const fetcher = async (): Promise<Response> => {
     }
 };
 
-const columnMapping = [
-  'producer_code',  // Column 0: 1000@5x114.3
-  'name',           // Column 1: "ABS F22 Dark Tint..."
-  'size',           // Column 2: 21
-  'width',          // Column 3: 10.5
-  'et',             // Column 4: 42
-  'cb',             // Column 5: 74.1
-  'pcd',            // Column 6: 5x114.3
-  'producer',       // Column 7: ABS
-  'model',          // Column 8: F22
-  'finish',         // Column 9: "DARK TINT"
-  'price',          // Column 10: 323
-  'stock',          // Column 11: 17
-  'photo_url',      // Column 12: https://...
-];
-
 export const source5: DataSource = {
   name: 'Sursa 5',
   type: 'csv',
   fetcher,
   parserConfig: {
-    columnMapping: columnMapping,
+    // Switched to header-based mapping with the correct headers provided by the user.
+    requiredHeaders: ['articlecode', 'nett-price', 'stock'],
   },
   map,
 };
