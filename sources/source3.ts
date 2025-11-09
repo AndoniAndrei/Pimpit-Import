@@ -1,3 +1,4 @@
+
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
 
@@ -68,33 +69,30 @@ const map = (data: Product[]): Product[] => {
 };
 
 /**
- * Fetches data from the Wheeltrade API using a secure and reliable method.
- * It reads the API key from environment variables and uses a single, trusted
- * CORS proxy to bypass browser security restrictions.
+ * Fetches data from the Wheeltrade API via a secure, server-side proxy.
+ * This function calls a local API endpoint which handles the API key securely.
  */
 const fetcher = async (): Promise<Response> => {
-    // 1. Get the API Key securely from environment variables.
-    const apiKey = process.env.WHEELTRADE_API_KEY;
-
-    // 2. If the key is not configured, fail immediately with a clear error.
-    if (!apiKey) {
-        throw new Error('Cheia API pentru Sursa 3 (Wheeltrade) nu este configurată. Vă rugăm să setați variabila de mediu WHEELTRADE_API_KEY.');
-    }
-
-    // 3. Construct the correct, authorized URL using the API key.
-    const targetUrl = `https://b2b.wheeltrade.pl/en/xmlapi/7/2/utf8_withoutbom/${apiKey}?stream=true`;
-    
-    // 4. Use a single, reliable CORS proxy to bypass browser security restrictions.
-    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+    // Our secure, server-side proxy endpoint. This path should correspond
+    // to a serverless function (e.g., /api/wheeltrade.ts).
+    const proxyUrl = '/api/wheeltrade'; 
 
     try {
         const response = await fetch(proxyUrl, { cache: 'no-store' });
         
         if (!response.ok) {
-            throw new Error(`Serviciul intermediar a eșuat cu status: ${response.status}`);
+             let errorDetails = `Proxy-ul intern a eșuat cu status: ${response.status}.`;
+             try {
+                const errorData = await response.json();
+                if (errorData.error && errorData.error.includes('API key is not configured')) {
+                    errorDetails = 'Cheia API nu este configurată corect pe server. Vă rugăm să contactați administratorul platformei.';
+                }
+             } catch (e) {
+                // Response was not JSON, stick with the status code error.
+             }
+             throw new Error(errorDetails);
         }
 
-        // 5. Quick verification to ensure we received a valid XML file.
         const text = await response.clone().text();
         if (!text.trim().startsWith('<')) {
             throw new Error('Răspunsul primit de la sursă nu este un fișier XML valid.');
@@ -103,17 +101,17 @@ const fetcher = async (): Promise<Response> => {
         return response;
 
     } catch (error) {
-        console.error("Eroare la încărcarea Sursei 3:", error);
-        // Re-throw a more user-friendly error to be displayed in the UI.
+        console.error("Eroare la încărcarea Sursei 3 prin proxy:", error);
         const message = error instanceof Error ? error.message : 'Eroare necunoscută.';
         throw new Error(`Nu s-a putut încărca Sursa 3. Motiv: ${message}`);
     }
 };
 
+
 export const source3: DataSource = {
   name: 'Sursa 3',
   type: 'xml',
-  fetcher, // Use the new secure and reliable fetcher
+  fetcher, // Use the new secure server-side fetcher
   parserConfig: {
     // Not needed for XML, but required by the interface for consistency
     requiredHeaders: [], 

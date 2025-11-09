@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, lazy, useCallback } from 'react';
 import { Product, Filters, AvailableOptions, FilterMode, DataSource } from './types';
 import ProductCard from './components/ProductCard';
 import FilterControls from './components/FilterControls';
@@ -34,88 +34,86 @@ const App: React.FC = () => {
   };
   const [filters, setFilters] = useState<Filters>(initialFilters);
 
-  useEffect(() => {
-    const fetchProducts = async () => {
-      setLoading(true);
-      setError(null);
-      setProducts([]); // Ensure fresh data on every load
+  const fetchProducts = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    setProducts([]);
 
-      if (allSources.length === 0) {
-        setError("Nicio sursă de date nu este configurată. Verificați directorul 'sources'.");
-        setLoading(false);
-        return;
-      }
+    if (allSources.length === 0) {
+      setError("Nicio sursă de date nu este configurată. Verificați directorul 'sources'.");
+      setLoading(false);
+      return;
+    }
 
-      const errors: string[] = [];
+    const errors: string[] = [];
 
-      const processSource = async (source: DataSource) => {
-         try {
-            const fetchOptions: RequestInit = { cache: 'no-store' }; // Ensure fresh fetch
-            
-            // Use custom fetcher if available, otherwise use standard fetch with URL
-            const res = source.fetcher 
-                ? await source.fetcher()
-                : await fetch(source.url!, fetchOptions);
+    const processSource = async (source: DataSource) => {
+       try {
+          const fetchOptions: RequestInit = { cache: 'no-store' };
+          
+          const res = source.fetcher 
+              ? await source.fetcher()
+              : await fetch(source.url!, fetchOptions);
 
-            if (!res.ok) {
-              throw new Error(`nu a putut fi încărcată (status: ${res.status}).`);
-            }
-
-            const text = await res.text();
-            if (!text.trim()) {
-              throw new Error('este un fișier gol.');
-            }
-            
-            const isXml = source.type === 'xml';
-            const parsedData = isXml
-                ? parseXMLData(text)
-                : parseCSVData(text, source.parserConfig.requiredHeaders);
-
-            const mappedData = source.map(parsedData);
-            
-            if (mappedData.length === 0) {
-              // This is not necessarily an error, could be an empty valid file.
-              // We'll log it for debugging but won't show a user-facing error.
-              console.warn(`Sursa ${source.name} a returnat 0 produse după mapare.`);
-            }
-            
-            return mappedData;
-          } catch (e) {
-            console.error(`Error processing ${source.name}:`, e);
-            const errorMessage = e instanceof Error ? e.message : 'Eroare necunoscută la procesare.';
-            errors.push(`${source.name}: ${errorMessage}`);
-            return []; // Return empty array on error for this source
+          if (!res.ok) {
+            throw new Error(`nu a putut fi încărcată (status: ${res.status}).`);
           }
-      };
 
-      try {
-        setLoadingMessage(`Se încarcă sursele...`);
-        
-        const promises = allSources.map(source => {
-          setLoadingMessage(`Se încarcă ${source.name}...`);
-          return processSource(source).then(newProducts => {
-            if (newProducts.length > 0) {
-               setProducts(prevProducts => [...prevProducts, ...newProducts]);
-            }
-          });
-        });
+          const text = await res.text();
+          if (!text.trim()) {
+            throw new Error('este un fișier gol.');
+          }
+          
+          const isXml = source.type === 'xml';
+          const parsedData = isXml
+              ? parseXMLData(text)
+              : parseCSVData(text, source.parserConfig.requiredHeaders);
 
-        await Promise.all(promises);
-
-        if (errors.length > 0) {
-            setError(errors.join(' '));
+          const mappedData = source.map(parsedData);
+          
+          if (mappedData.length === 0) {
+            console.warn(`Sursa ${source.name} a returnat 0 produse după mapare.`);
+          }
+          
+          return mappedData;
+        } catch (e) {
+          console.error(`Error processing ${source.name}:`, e);
+          const errorMessage = e instanceof Error ? e.message : 'Eroare necunoscută la procesare.';
+          errors.push(`${source.name}: ${errorMessage}`);
+          return [];
         }
-
-      } catch (e) {
-        const errorMessage = e instanceof Error ? e.message : 'A apărut o eroare necunoscută.';
-        setError(`A apărut o eroare la încărcarea produselor: ${errorMessage}`);
-      } finally {
-        setLoading(false);
-        setLoadingMessage('');
-      }
     };
-    fetchProducts();
+
+    try {
+      setLoadingMessage(`Se încarcă sursele...`);
+      
+      const promises = allSources.map(source => {
+        setLoadingMessage(`Se încarcă ${source.name}...`);
+        return processSource(source).then(newProducts => {
+          if (newProducts.length > 0) {
+             setProducts(prevProducts => [...prevProducts, ...newProducts]);
+          }
+        });
+      });
+
+      await Promise.all(promises);
+
+      if (errors.length > 0) {
+          setError(errors.join(' '));
+      }
+
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'A apărut o eroare necunoscută.';
+      setError(`A apărut o eroare la încărcarea produselor: ${errorMessage}`);
+    } finally {
+      setLoading(false);
+      setLoadingMessage('');
+    }
   }, []);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
 
   const baseFilteredProducts = useMemo(() => {
     return products.filter(product => {
@@ -142,7 +140,6 @@ const App: React.FC = () => {
       return values.sort((a,b) => String(a).localeCompare(String(b), undefined, {numeric: true}));
     };
     
-    // Base filter for dependent dropdowns
     const preFilteredProducts = products.filter(p => {
         if(filters.searchTerm && !(String(p['PartDescription']||'').toLowerCase().includes(filters.searchTerm.toLowerCase()) || String(p['PartNumber']||'').toLowerCase().includes(filters.searchTerm.toLowerCase()) || String(p['EAN']||'').toLowerCase().includes(filters.searchTerm.toLowerCase()))) return false;
         if(filters.ProductType !== 'all' && p.ProductType !== filters.ProductType) return false;
