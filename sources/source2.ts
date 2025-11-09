@@ -1,7 +1,6 @@
 
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
-import { translateText } from '../utils/translator';
 
 // Maps data from the second source, calculates price, and unifies structure
 const map = async (data: Product[]): Promise<Product[]> => {
@@ -48,24 +47,8 @@ const map = async (data: Product[]): Promise<Product[]> => {
       return product;
     });
 
-  // Translate and normalize product data in parallel for efficiency
-  return Promise.all(initialProducts.map(async product => {
-    const [
-      translatedDesc,
-      translatedFinish
-    ] = await Promise.all([
-      translateText(product.PartDescription),
-      translateText(product.Finish)
-    ]);
-
-    const translatedProduct: Product = {
-      ...product,
-      PartDescription: translatedDesc,
-      Finish: translatedFinish,
-    };
-
-    return normalizeProductAttributes(translatedProduct);
-  }));
+  // Just normalize product attributes
+  return initialProducts.map(product => normalizeProductAttributes(product));
 };
 
 export const source2: DataSource = {
