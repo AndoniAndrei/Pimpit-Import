@@ -58,11 +58,41 @@ const map = async (data: Product[]): Promise<Product[]> => {
     return initialProducts.map(product => normalizeProductAttributes(product));
 };
 
+const fetcher = async (): Promise<Response> => {
+    const proxyUrl = '/api/felgeo';
+
+    try {
+        const response = await fetch(proxyUrl, { cache: 'no-store' });
+
+        if (!response.ok) {
+            let errorDetails = `Proxy-ul intern pentru Sursa 4 a eșuat cu status: ${response.status}.`;
+            try {
+                const errorData = await response.json();
+                if (errorData.details) {
+                    errorDetails = `Mesaj de la furnizor (Sursa 4): "${errorData.details}"`;
+                } else if (errorData.error) {
+                    errorDetails = errorData.error;
+                }
+            } catch (e) {
+                errorDetails = `Proxy-ul pentru Sursa 4 a returnat o eroare neașteptată (status ${response.status}).`;
+            }
+            throw new Error(errorDetails);
+        }
+
+        return response;
+
+    } catch (error) {
+        console.error("Eroare la încărcarea Sursei 4 prin proxy:", error);
+        const message = error instanceof Error ? error.message : 'Eroare necunoscută.';
+        throw new Error(`Nu s-a putut încărca Sursa 4. Motiv: ${message}`);
+    }
+};
+
 
 export const source4: DataSource = {
   name: 'Sursa 4',
-  url: 'http://gl-traders1.nazwa.pl/felgeostocks/felgeo.csv',
   type: 'csv',
+  fetcher,
   parserConfig: {
     requiredHeaders: ['sku', 'producent', 'cena_zakupu_netto_eur'],
   },
