@@ -6,7 +6,7 @@ const keysToNormalize: (keyof Product)[] = ['Size', 'Width', 'Offset', 'CB', 'Lo
  * Standardizes product attributes to ensure data consistency for filtering.
  * - Trims whitespace from all string values.
  * - Normalizes decimal separators to a dot (e.g., "8,5" becomes "8.5").
- * - Converts numeric-like strings to a consistent format (e.g., "19.0" becomes "19", "8.50" becomes "8.5").
+ * - Converts numeric-like strings to a consistent format (e.g., "19.0" or "19." becomes "19", "8.50" becomes "8.5").
  * - Preserves non-standard numeric formats like ranges (e.g., "20-35").
  * @param product The product object to normalize.
  * @returns The normalized product object.
@@ -25,20 +25,21 @@ export const normalizeProductAttributes = (product: Product): Product => {
   for (const key of keysToNormalize) {
     const value = normalizedProduct[key];
     if (typeof value === 'string' && value) {
-      // Standardize decimal separator from comma to dot
-      const standardizedValue = value.replace(',', '.');
+      let standardizedValue = value.replace(',', '.');
       
-      // A simple regex to check for a valid numeric format (allows for negative numbers and decimals)
-      const isSimpleNumber = /^-?\d+(\.\d+)?$/.test(standardizedValue);
-
-      if (isSimpleNumber) {
-        const num = parseFloat(standardizedValue);
-        // This converts "8.50" to "8.5" and "8.0" to "8" for consistent filtering
-        normalizedProduct[key] = String(num);
-      } else {
-        // It's likely a range or some other format (e.g., "20-35"), so keep the standardized string
-        normalizedProduct[key] = standardizedValue;
+      // Preserve ranges like "20-35" and don't attempt to parse them as a single float.
+      const isRange = /^-?\d+--?\d+$/.test(standardizedValue) || /^-?\d+-\d+$/.test(standardizedValue);
+      
+      if (!isRange) {
+          const num = parseFloat(standardizedValue);
+          // If the string can be parsed into a valid number, use the parsed version.
+          // This cleans up formats like "7.", "7.0" into "7", and "8.50" into "8.5".
+          if (!isNaN(num)) {
+            standardizedValue = String(num);
+          }
       }
+
+      normalizedProduct[key] = standardizedValue;
     }
   }
 
