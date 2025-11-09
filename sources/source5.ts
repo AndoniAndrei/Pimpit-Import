@@ -12,11 +12,24 @@ const map = async (data: Product[]): Promise<Product[]> => {
 
       const imageUrl = p['URL-to-photo'];
       const imageUrls = imageUrl ? [imageUrl] : [];
+      
+      let brand = p.Brand;
+      let model = p.Model;
+
+      // Data correction: If the brand field contains the model (e.g., "ABS F55") and the model field is empty,
+      // split them into the correct fields. This handles inconsistencies like ";;" in the source CSV.
+      if (typeof brand === 'string' && brand.toUpperCase().startsWith('ABS ') && !model) {
+        const brandParts = brand.split(' ');
+        if (brandParts.length > 1) {
+            model = brandParts.slice(1).join(' ').trim();
+            brand = 'ABS';
+        }
+      }
 
       const product: Product = {
         PartNumber: p.Articlecode,
-        Brand: p.Brand,
-        Model: p.Model,
+        Brand: brand, // Use corrected brand
+        Model: model, // Use corrected model
         PartDescription: p.Description,
         Finish: p.Color,
         Size: p.Inch,
@@ -64,7 +77,8 @@ export const source5: DataSource = {
   fetcher,
   parserConfig: {
     // Switched to header-based mapping with the correct headers provided by the user.
-    requiredHeaders: ['articlecode', 'nett-price', 'stock'],
+    // Adding brand and model to ensure the data correction logic works reliably.
+    requiredHeaders: ['articlecode', 'brand', 'model', 'nett-price', 'stock'],
   },
   map,
 };
