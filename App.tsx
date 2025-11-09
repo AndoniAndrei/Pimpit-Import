@@ -222,35 +222,37 @@ const App: React.FC = () => {
     };
     const sortNumeric = (arr: string[]) => arr.sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
 
-    // Base set for generating options, filtered only by what's globally relevant (search, product type)
-    const optionsBaseProducts = products.filter(p => {
-        if (filters.searchTerm && !(String(p['PartDescription'] || '').toLowerCase().includes(filters.searchTerm.toLowerCase()) || String(p['PartNumber'] || '').toLowerCase().includes(filters.searchTerm.toLowerCase()) || String(p['EAN'] || '').toLowerCase().includes(filters.searchTerm.toLowerCase()))) return false;
+    // Create a cascade of filtered product sets. Each set is used to generate the options for the *next* filter level.
+    const productTypeFiltered = products.filter(p => {
+        if (filters.searchTerm) {
+             const term = filters.searchTerm.toLowerCase();
+             if (!(String(p['PartDescription'] || '').toLowerCase().includes(term) || String(p['PartNumber'] || '').toLowerCase().includes(term) || String(p['EAN'] || '').toLowerCase().includes(term))) return false;
+        }
         if (filters.ProductType !== 'all' && p.ProductType !== filters.ProductType) return false;
         return true;
     });
 
-    // Create sequentially filtered sets for cascading options logic
-    const brandFiltered = optionsBaseProducts.filter(p => filters.Brand === 'all' || p.Brand === filters.Brand);
-    const sizeFiltered = brandFiltered.filter(p => filters.Size === 'all' || String(p.Size) === filters.Size);
+    const brandFiltered = productTypeFiltered.filter(p => filters.Brand === 'all' || p.Brand === filters.Brand);
+    const finishFiltered = brandFiltered.filter(p => filters.Finish === 'all' || p.Finish === filters.Finish);
+    const sizeFiltered = finishFiltered.filter(p => filters.Size === 'all' || String(p.Size) === filters.Size);
     const pcdFiltered = sizeFiltered.filter(p => filters.PCD === 'all' || productMatchesFilter(p.PCD, filters.PCD, 'PCD'));
 
-    // Initialize the options object
     const newOptions: AvailableOptions = {
         ProductType: sortNumeric(getRawUniqueValues(products, 'ProductType').map(String)),
-        Brand: sortNumeric(getRawUniqueValues(optionsBaseProducts, 'Brand').map(String)),
+        Brand: sortNumeric(getRawUniqueValues(productTypeFiltered, 'Brand').map(String)),
         Finish: sortNumeric(getRawUniqueValues(brandFiltered, 'Finish').map(String)),
-        Size: sortNumeric(getRawUniqueValues(brandFiltered, 'Size').map(String)),
+        Size: sortNumeric(getRawUniqueValues(finishFiltered, 'Size').map(String)),
         PCD: sortNumeric(expandPcdValues(getRawUniqueValues(sizeFiltered, 'PCD'))),
         Width: [], Offset: [], Width_Front: [], Offset_Front: [], Width_Rear: [], Offset_Rear: []
     };
     
-    // Width options depend on Brand, Size, and PCD
+    // Width options depend on the full cascade before it
     const allWidths = sortNumeric(getRawUniqueValues(pcdFiltered, 'Width').map(String));
     newOptions.Width = allWidths;
     newOptions.Width_Front = allWidths;
     newOptions.Width_Rear = allWidths;
 
-    // Offset options depend on Brand, Size, PCD, and Width
+    // Offset options depend on the full cascade including Width
     const offsetStandardProducts = pcdFiltered.filter(p => filters.Width === 'all' || String(p.Width) === filters.Width);
     newOptions.Offset = sortNumeric(expandOffsetValues(getRawUniqueValues(offsetStandardProducts, 'Offset')));
 
