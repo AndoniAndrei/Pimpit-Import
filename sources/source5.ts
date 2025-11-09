@@ -61,12 +61,31 @@ const fetcher = async (): Promise<Response> => {
     }
 };
 
+const columnMapping = [
+  'ean_code',
+  'producer_code',
+  'producer',
+  'name',
+  'finish',
+  'size',
+  'width',
+  'pcd',
+  'et',
+  'cb',
+  'stock',
+  'price',
+  'photo_url',
+  '360_photo_url',
+  'tuv_url',
+  'weight',
+];
+
 export const source5: DataSource = {
   name: 'Sursa 5',
   type: 'csv',
   fetcher,
   parserConfig: {
-    requiredHeaders: ['ean_code', 'producer_code', 'price', 'stock'],
+    columnMapping: columnMapping,
   },
   map,
 };
