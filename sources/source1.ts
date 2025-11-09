@@ -1,4 +1,3 @@
-
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
 
@@ -15,8 +14,15 @@ const map = (data: Product[]): Product[] => {
         .map(key => p[key])
         .filter((url): url is string => url && typeof url === 'string' && url.trim().startsWith('http'));
 
+      // Extract ET/Offset from PartDescription if not already present
+      const description = String(p['PartDescription'] || '');
+      // Regex to find ET followed by numbers, optionally negative or a range (e.g., ET40, ET-10, ET20-35)
+      const etMatch = description.match(/\bET(-?\d+(?:-\d+)?)\b/i);
+      const extractedOffset = etMatch ? etMatch[1] : undefined;
+
       const product: Product = {
         ...p,
+        Offset: p['Offset'] || extractedOffset, // Prioritize existing Offset column, fallback to extracted value
         Price: price,
         Stock: parseInt(p['7001'], 10) || 0,
         OnTheWaterStock: parseInt(p['On the water'], 10) || 0,
