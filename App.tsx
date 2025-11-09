@@ -236,6 +236,11 @@ const App: React.FC = () => {
       <header className="text-center mb-8">
         <h1 className="text-4xl md:text-5xl font-bold text-gray-800">Catalog Produse B2B</h1>
         <p className="text-gray-500 mt-2">Catalog Furnizori Piese Auto</p>
+        {!loading && !error && products.length > 0 && (
+          <p className="text-lg text-gray-700 mt-4 font-light">
+            <span className="font-semibold">{products.length.toLocaleString('ro-RO')}</span> Produse Unice în Catalog
+          </p>
+        )}
       </header>
       
       <FilterControls
@@ -253,7 +258,7 @@ const App: React.FC = () => {
         ) : (
           <>
             <div className="text-left text-gray-600 mb-4">
-                Afișare <strong>{filteredProducts.length}</strong> din <strong>{products.length}</strong> produse.
+                Afișare <strong>{filteredProducts.length}</strong> din <strong>{products.length.toLocaleString('ro-RO')}</strong> produse.
                 {products.length === 0 && !loading && <span className="ml-2">Niciun produs nu a putut fi încărcat.</span>}
             </div>
             
