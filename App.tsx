@@ -313,6 +313,15 @@ const App: React.FC = () => {
             
             {filteredProducts.length > 0 ? (
                 <>
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    itemsPerPage={itemsPerPage}
+                    totalItems={filteredProducts.length}
+                    onPageChange={setCurrentPage}
+                    onItemsPerPageChange={setItemsPerPage}
+                    className="mb-4"
+                  />
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                       {paginatedProducts.map((product, index) => <ProductCard key={`${product['PartNumber']}-${index}`} product={product} onProductClick={handleProductClick} />)}
                   </div>
@@ -323,6 +332,7 @@ const App: React.FC = () => {
                     totalItems={filteredProducts.length}
                     onPageChange={setCurrentPage}
                     onItemsPerPageChange={setItemsPerPage}
+                    className="mt-8"
                   />
                 </>
             ) : (

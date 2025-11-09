@@ -8,6 +8,7 @@ interface PaginationProps {
   totalItems: number;
   onPageChange: (page: number) => void;
   onItemsPerPageChange: (items: number) => void;
+  className?: string;
 }
 
 const Pagination: React.FC<PaginationProps> = ({
@@ -17,6 +18,7 @@ const Pagination: React.FC<PaginationProps> = ({
   totalItems,
   onPageChange,
   onItemsPerPageChange,
+  className = '',
 }) => {
   if (totalItems === 0 || totalItems <= itemsPerPage && itemsPerPage !== 0) {
     return null;
@@ -44,7 +46,7 @@ const Pagination: React.FC<PaginationProps> = ({
   const endItem = itemsPerPage === 0 ? totalItems : Math.min(startItem + itemsPerPage - 1, totalItems);
 
   return (
-    <nav className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6 mt-8 rounded-lg shadow-md" aria-label="Pagination">
+    <nav className={`bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6 rounded-lg shadow-md ${className}`} aria-label="Pagination">
       <div className="hidden sm:block">
         <p className="text-sm text-gray-700">
           Afișare de la <span className="font-medium">{itemsPerPage === 0 ? 1 : startItem}</span> la <span className="font-medium">{endItem}</span> din{' '}
