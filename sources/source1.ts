@@ -21,9 +21,34 @@ const map = async (data: Product[]): Promise<Product[]> => {
       const etMatch = description.match(/\bET(-?\d+(?:-\d+)?)\b/i);
       const extractedOffset = etMatch ? etMatch[1] : undefined;
 
+      // Construct a new product object with only the necessary fields
+      // to reduce memory footprint, avoiding the `...p` spread.
       const product: Product = {
-        ...p,
-        Offset: p['Offset'] || extractedOffset, // Prioritize existing Offset column, fallback to extracted value
+        // Core identifiers from source
+        PartNumber: p['PartNumber'],
+        PartDescription: p['PartDescription'],
+        Brand: p['Brand'],
+        EAN: p['EAN'],
+        Model: p['Model'],
+
+        // Specifications from source
+        Size: p['Size'],
+        Width: p['Width'],
+        PCD: p['PCD'],
+        CB: p['CB'],
+        Finish: p['Finish'],
+        Load: p['Load'],
+        Weight: p['Weight'],
+        Description: p['Description'],
+        next_delivery: p['next_delivery'],
+        
+        // Media and links that might exist in source
+        ThreeSixtyImageUrl: p['ThreeSixtyImageUrl'],
+        TuvUrl: p['TuvUrl'],
+        YoutubeUrl: p['YoutubeUrl'],
+        
+        // Calculated and mapped fields
+        Offset: p['Offset'] || extractedOffset, // Prioritize existing Offset column
         Price: price,
         Stock: parseInt(p['7001'], 10) || 0,
         OnTheWaterStock: parseInt(p['On the water'], 10) || 0,
