@@ -11,6 +11,75 @@ import { parseXMLData } from './utils/xmlParser';
 
 const ProductModal = lazy(() => import('./components/ProductModal'));
 
+// Helper function to expand multi-value PCD strings
+const expandPcdValues = (values: (string | number)[]): string[] => {
+  const allPcds = new Set<string>();
+  values.forEach(pcd => {
+    if (!pcd) return;
+    String(pcd).split(/[,/\s]+/).filter(Boolean).forEach(part => allPcds.add(part.trim()));
+  });
+  return Array.from(allPcds);
+};
+
+// Helper function to expand ET/Offset ranges
+const expandOffsetValues = (values: (string | number)[]): string[] => {
+  const allOffsets = new Set<string>();
+  values.forEach(offset => {
+    if (offset === null || offset === undefined) return;
+    const offsetStr = String(offset).trim();
+    if (offsetStr === '') return;
+    
+    // Regex to match a range like "20-40" or "-5-10"
+    const rangeMatch = offsetStr.match(/^(-?\d+)-(-?\d+)$/);
+    if (rangeMatch) {
+      const start = parseInt(rangeMatch[1], 10);
+      const end = parseInt(rangeMatch[2], 10);
+      // Ensure start is not greater than end
+      if (!isNaN(start) && !isNaN(end) && start <= end) {
+        for (let i = start; i <= end; i++) {
+          allOffsets.add(String(i));
+        }
+      } else {
+        // If range is invalid (e.g., "40-20"), add the original string
+        allOffsets.add(offsetStr);
+      }
+    } else {
+      allOffsets.add(offsetStr);
+    }
+  });
+  return Array.from(allOffsets);
+};
+
+// Helper to check if a product's value matches the selected filter, accounting for special formats
+const productMatchesFilter = (productValue: any, filterValue: string, key: 'PCD' | 'Offset'): boolean => {
+  if (filterValue === 'all') return true;
+  if (productValue === null || productValue === undefined) return false;
+
+  const prodValStr = String(productValue).trim();
+  if (prodValStr === filterValue) return true;
+
+  if (key === 'PCD') {
+    // Check if the filter value is one of the parts in a multi-value string
+    const pcdParts = prodValStr.split(/[,/\s]+/).filter(Boolean);
+    return pcdParts.includes(filterValue);
+  }
+
+  if (key === 'Offset') {
+    // Check if the filter value falls within a range like "20-40"
+    const rangeMatch = prodValStr.match(/^(-?\d+)-(-?\d+)$/);
+    if (rangeMatch) {
+      const start = parseInt(rangeMatch[1], 10);
+      const end = parseInt(rangeMatch[2], 10);
+      const filterNum = parseInt(filterValue, 10);
+      if (!isNaN(start) && !isNaN(end) && !isNaN(filterNum) && start <= end) {
+        return filterNum >= start && filterNum <= end;
+      }
+    }
+  }
+
+  return false;
+};
+
 const App: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -126,18 +195,19 @@ const App: React.FC = () => {
       if (Brand !== 'all' && product['Brand'] !== Brand) return false;
       if (Finish !== 'all' && product['Finish'] !== Finish) return false;
       if (Size !== 'all' && String(product['Size']) !== Size) return false;
-      if (PCD !== 'all' && product['PCD'] !== PCD) return false;
+      if (PCD !== 'all' && !productMatchesFilter(product['PCD'], PCD, 'PCD')) return false;
       if (ProductType !== 'all' && product['ProductType'] !== ProductType) return false;
       return true;
     });
   }, [products, filters]);
 
   const availableOptions = useMemo<AvailableOptions>(() => {
-    const getUniqueSortedValues = (items: Product[], key: string): string[] => {
-      const values = [...new Set(items.map(p => p[key]).filter(Boolean))];
-      return values.sort((a,b) => String(a).localeCompare(String(b), undefined, {numeric: true}));
+    const getRawUniqueValues = (items: Product[], key: string): any[] => {
+      return [...new Set(items.map(p => p[key]).filter(v => v !== null && v !== undefined && v !== ''))];
     };
     
+    const sortNumeric = (arr: string[]) => arr.sort((a,b) => String(a).localeCompare(String(b), undefined, {numeric: true}));
+
     const preFilteredProducts = products.filter(p => {
         if(filters.searchTerm && !(String(p['PartDescription']||'').toLowerCase().includes(filters.searchTerm.toLowerCase()) || String(p['PartNumber']||'').toLowerCase().includes(filters.searchTerm.toLowerCase()) || String(p['EAN']||'').toLowerCase().includes(filters.searchTerm.toLowerCase()))) return false;
         if(filters.ProductType !== 'all' && p.ProductType !== filters.ProductType) return false;
@@ -145,22 +215,29 @@ const App: React.FC = () => {
     });
 
     const newOptions: AvailableOptions = {
-        ProductType: getUniqueSortedValues(products, 'ProductType'),
-        Brand: getUniqueSortedValues(preFilteredProducts, 'Brand'),
-        Finish: getUniqueSortedValues(preFilteredProducts.filter(p => filters.Brand === 'all' || p.Brand === filters.Brand), 'Finish'),
-        Size: getUniqueSortedValues(preFilteredProducts.filter(p => (filters.Brand === 'all' || p.Brand === filters.Brand) && (filters.Finish === 'all' || p.Finish === filters.Finish)), 'Size'),
-        PCD: getUniqueSortedValues(preFilteredProducts.filter(p => (filters.Brand === 'all' || p.Brand === filters.Brand) && (filters.Finish === 'all' || p.Finish === filters.Finish) && (filters.Size === 'all' || String(p.Size) === filters.Size)), 'PCD'),
-        Width: [], Offset: [], Width_Front: [], Offset_Front: [], Width_Rear: [], Offset_Rear: []
+        ProductType: sortNumeric(getRawUniqueValues(products, 'ProductType').map(String)),
+        Brand: sortNumeric(getRawUniqueValues(preFilteredProducts, 'Brand').map(String)),
+        Finish: sortNumeric(getRawUniqueValues(preFilteredProducts.filter(p => filters.Brand === 'all' || p.Brand === filters.Brand), 'Finish').map(String)),
+        Size: sortNumeric(getRawUniqueValues(preFilteredProducts.filter(p => (filters.Brand === 'all' || p.Brand === filters.Brand) && (filters.Finish === 'all' || p.Finish === filters.Finish)), 'Size').map(String)),
+        PCD: [], Width: [], Offset: [], Width_Front: [], Offset_Front: [], Width_Rear: [], Offset_Rear: []
     };
-
-    newOptions.Width = getUniqueSortedValues(baseFilteredProducts, 'Width');
-    newOptions.Offset = getUniqueSortedValues(baseFilteredProducts.filter(p => filters.Width === 'all' || String(p.Width) === filters.Width), 'Offset');
     
-    newOptions.Width_Front = getUniqueSortedValues(baseFilteredProducts, 'Width');
-    newOptions.Offset_Front = getUniqueSortedValues(baseFilteredProducts.filter(p => filters.Width_Front === 'all' || String(p.Width) === filters.Width_Front), 'Offset');
+    const pcdSourceProducts = preFilteredProducts.filter(p => (filters.Brand === 'all' || p.Brand === filters.Brand) && (filters.Finish === 'all' || p.Finish === filters.Finish) && (filters.Size === 'all' || String(p.Size) === filters.Size));
+    newOptions.PCD = sortNumeric(expandPcdValues(getRawUniqueValues(pcdSourceProducts, 'PCD')));
     
-    newOptions.Width_Rear = getUniqueSortedValues(baseFilteredProducts, 'Width');
-    newOptions.Offset_Rear = getUniqueSortedValues(baseFilteredProducts.filter(p => filters.Width_Rear === 'all' || String(p.Width) === filters.Width_Rear), 'Offset');
+    const allWidths = sortNumeric(getRawUniqueValues(baseFilteredProducts, 'Width').map(String));
+    newOptions.Width = allWidths;
+    newOptions.Width_Front = allWidths;
+    newOptions.Width_Rear = allWidths;
+    
+    const offsetStandardProducts = baseFilteredProducts.filter(p => filters.Width === 'all' || String(p.Width) === filters.Width);
+    newOptions.Offset = sortNumeric(expandOffsetValues(getRawUniqueValues(offsetStandardProducts, 'Offset')));
+    
+    const offsetFrontProducts = baseFilteredProducts.filter(p => filters.Width_Front === 'all' || String(p.Width) === filters.Width_Front);
+    newOptions.Offset_Front = sortNumeric(expandOffsetValues(getRawUniqueValues(offsetFrontProducts, 'Offset')));
+    
+    const offsetRearProducts = baseFilteredProducts.filter(p => filters.Width_Rear === 'all' || String(p.Width) === filters.Width_Rear);
+    newOptions.Offset_Rear = sortNumeric(expandOffsetValues(getRawUniqueValues(offsetRearProducts, 'Offset')));
     
     return newOptions;
   }, [products, filters, baseFilteredProducts]);
@@ -195,7 +272,7 @@ const App: React.FC = () => {
     if (filterMode === 'standard') {
       return baseFilteredProducts.filter(product => {
         if (filters.Width !== 'all' && String(product['Width']) !== filters.Width) return false;
-        if (filters.Offset !== 'all' && String(product['Offset']) !== filters.Offset) return false;
+        if (filters.Offset !== 'all' && !productMatchesFilter(product['Offset'], filters.Offset, 'Offset')) return false;
         return true;
       });
     } else { // staggered mode
@@ -205,9 +282,9 @@ const App: React.FC = () => {
 
       return baseFilteredProducts.filter(product => {
         const matchesFront = (filters.Width_Front === 'all' || String(product.Width) === filters.Width_Front) &&
-                             (filters.Offset_Front === 'all' || String(product.Offset) === filters.Offset_Front);
+                             (filters.Offset_Front === 'all' || productMatchesFilter(product.Offset, filters.Offset_Front, 'Offset'));
         const matchesRear = (filters.Width_Rear === 'all' || String(product.Width) === filters.Width_Rear) &&
-                            (filters.Offset_Rear === 'all' || String(product.Offset) === filters.Offset_Rear);
+                            (filters.Offset_Rear === 'all' || productMatchesFilter(product.Offset, filters.Offset_Rear, 'Offset'));
         if (frontFiltersActive && !rearFiltersActive) return matchesFront;
         if (!frontFiltersActive && rearFiltersActive) return matchesRear;
         return matchesFront || matchesRear;
