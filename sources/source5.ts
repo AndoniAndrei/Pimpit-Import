@@ -16,7 +16,7 @@ const map = async (data: Product[]): Promise<Product[]> => {
       let brand = p.Brand;
       let model = p.Model;
 
-      // Data correction: If the brand field contains the model (e.g., "ABS F55") and the model field is empty,
+      // Data correction 1: If the brand field contains the model (e.g., "ABS F55") and the model field is empty,
       // split them into the correct fields. This handles inconsistencies like ";;" in the source CSV.
       if (typeof brand === 'string' && brand.toUpperCase().startsWith('ABS ') && !model) {
         const brandParts = brand.split(' ');
@@ -24,6 +24,11 @@ const map = async (data: Product[]): Promise<Product[]> => {
             model = brandParts.slice(1).join(' ').trim();
             brand = 'ABS';
         }
+      }
+
+      // Data correction 2: If brand is missing but model exists, assume brand is "ABS".
+      if (!brand && model) {
+          brand = 'ABS';
       }
 
       const product: Product = {
