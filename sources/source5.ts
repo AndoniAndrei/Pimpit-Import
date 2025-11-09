@@ -3,7 +3,7 @@ import { normalizeProductAttributes } from '../utils/productUtils';
 
 const map = async (data: Product[]): Promise<Product[]> => {
   const initialProducts = data
-    .filter(p => p && p.producer_code)
+    .filter(p => p && p.producer_code && String(p.producer_code).trim() !== '')
     .map(p => {
       // Price Calculation: ((((pret de achizitie*4)*1.21)*1.4)*5)/4
       const purchasePriceStr = String(p.price || '0').replace(',', '.');
@@ -13,24 +13,25 @@ const map = async (data: Product[]): Promise<Product[]> => {
       const imageUrl = p.photo_url;
       const imageUrls = imageUrl ? [imageUrl] : [];
 
+      // Clean quotes from text fields as requested
+      const productName = String(p.name || '').replace(/"/g, '').trim();
+      const productFinish = String(p.finish || '').replace(/"/g, '').trim();
+
       const product: Product = {
         PartNumber: p.producer_code,
-        EAN: p.ean_code,
         Brand: p.producer,
-        PartDescription: p.name,
-        Finish: p.finish,
+        Model: p.model,
+        PartDescription: productName,
+        Finish: productFinish,
         Size: p.size,
         Width: p.width,
         PCD: p.pcd,
         Offset: p.et,
         CB: p.cb,
-        Stock: parseInt(p.stock, 10) || 0,
+        Stock: parseInt(String(p.stock), 10) || 0,
         Price: calculatedPrice,
         ImageUrl: imageUrl,
         ImageUrls: imageUrls,
-        ThreeSixtyImageUrl: p['360_photo_url'],
-        TuvUrl: p.tuv_url,
-        Weight: p.weight,
         Source: 'Sursa 5',
         ProductType: 'Jante',
       };
@@ -62,22 +63,19 @@ const fetcher = async (): Promise<Response> => {
 };
 
 const columnMapping = [
-  'ean_code',
-  'producer_code',
-  'producer',
-  'name',
-  'finish',
-  'size',
-  'width',
-  'pcd',
-  'et',
-  'cb',
-  'stock',
-  'price',
-  'photo_url',
-  '360_photo_url',
-  'tuv_url',
-  'weight',
+  'producer_code',  // Column 0: 1000@5x114.3
+  'name',           // Column 1: "ABS F22 Dark Tint..."
+  'size',           // Column 2: 21
+  'width',          // Column 3: 10.5
+  'et',             // Column 4: 42
+  'cb',             // Column 5: 74.1
+  'pcd',            // Column 6: 5x114.3
+  'producer',       // Column 7: ABS
+  'model',          // Column 8: F22
+  'finish',         // Column 9: "DARK TINT"
+  'price',          // Column 10: 323
+  'stock',          // Column 11: 17
+  'photo_url',      // Column 12: https://...
 ];
 
 export const source5: DataSource = {
