@@ -21,31 +21,35 @@ const expandPcdValues = (values: (string | number)[]): string[] => {
   return Array.from(allPcds);
 };
 
-// Helper function to expand ET/Offset ranges
+// Helper function to expand ET/Offset ranges and comma-separated lists
 const expandOffsetValues = (values: (string | number)[]): string[] => {
   const allOffsets = new Set<string>();
   values.forEach(offset => {
     if (offset === null || offset === undefined) return;
     const offsetStr = String(offset).trim();
     if (offsetStr === '') return;
-    
-    // Regex to match a range like "20-40" or "-5-10"
-    const rangeMatch = offsetStr.match(/^(-?\d+)-(-?\d+)$/);
-    if (rangeMatch) {
-      const start = parseInt(rangeMatch[1], 10);
-      const end = parseInt(rangeMatch[2], 10);
-      // Ensure start is not greater than end
-      if (!isNaN(start) && !isNaN(end) && start <= end) {
-        for (let i = start; i <= end; i++) {
-          allOffsets.add(String(i));
+
+    // Split by comma/space to handle lists like "20, 21, 22" or ranges like "20-40"
+    const parts = offsetStr.split(/[,/\s]+/).filter(Boolean);
+
+    parts.forEach(part => {
+      const trimmedPart = part.trim();
+      const rangeMatch = trimmedPart.match(/^(-?\d+)-(-?\d+)$/);
+      if (rangeMatch) {
+        const start = parseInt(rangeMatch[1], 10);
+        const end = parseInt(rangeMatch[2], 10);
+        if (!isNaN(start) && !isNaN(end) && start <= end) {
+          for (let i = start; i <= end; i++) {
+            allOffsets.add(String(i));
+          }
+        } else {
+          allOffsets.add(trimmedPart); // Add invalid range as is
         }
-      } else {
-        // If range is invalid (e.g., "40-20"), add the original string
-        allOffsets.add(offsetStr);
+      } else if (!isNaN(parseInt(trimmedPart, 10))) {
+        // Add if it's a valid number
+        allOffsets.add(trimmedPart);
       }
-    } else {
-      allOffsets.add(offsetStr);
-    }
+    });
   });
   return Array.from(allOffsets);
 };
@@ -56,23 +60,34 @@ const productMatchesFilter = (productValue: any, filterValue: string, key: 'PCD'
   if (productValue === null || productValue === undefined) return false;
 
   const prodValStr = String(productValue).trim();
-  if (prodValStr === filterValue) return true;
+  const filterValStr = String(filterValue).trim();
+  if (prodValStr === filterValStr) return true;
+
+  const valueParts = prodValStr.split(/[,/\s]+/).filter(Boolean);
 
   if (key === 'PCD') {
-    // Check if the filter value is one of the parts in a multi-value string
-    const pcdParts = prodValStr.split(/[,/\s]+/).filter(Boolean);
-    return pcdParts.includes(filterValue);
+    return valueParts.includes(filterValStr);
   }
 
   if (key === 'Offset') {
-    // Check if the filter value falls within a range like "20-40"
-    const rangeMatch = prodValStr.match(/^(-?\d+)-(-?\d+)$/);
-    if (rangeMatch) {
-      const start = parseInt(rangeMatch[1], 10);
-      const end = parseInt(rangeMatch[2], 10);
-      const filterNum = parseInt(filterValue, 10);
-      if (!isNaN(start) && !isNaN(end) && !isNaN(filterNum) && start <= end) {
-        return filterNum >= start && filterNum <= end;
+    const filterNum = parseInt(filterValStr, 10);
+    if (isNaN(filterNum)) return false; // Can't match if filter isn't a number
+
+    // Check each part of the product's offset value
+    for (const part of valueParts) {
+      // Check if the part is the exact number
+      if (part === filterValStr) return true;
+
+      // Check if the part is a range and the filter value falls within it
+      const rangeMatch = part.match(/^(-?\d+)-(-?\d+)$/);
+      if (rangeMatch) {
+        const start = parseInt(rangeMatch[1], 10);
+        const end = parseInt(rangeMatch[2], 10);
+        if (!isNaN(start) && !isNaN(end) && start <= end) {
+          if (filterNum >= start && filterNum <= end) {
+            return true;
+          }
+        }
       }
     }
   }
