@@ -1,9 +1,10 @@
 
-import React, { useState, useEffect, useMemo, Suspense, lazy, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import { Product, Filters, AvailableOptions, FilterMode, DataSource } from './types';
 import ProductCard from './components/ProductCard';
 import FilterControls from './components/FilterControls';
 import Spinner from './components/Spinner';
+import Pagination from './components/Pagination';
 import { allSources } from './sources';
 import { parseCSVData } from './utils/csvParser';
 import { parseXMLData } from './utils/xmlParser';
@@ -17,6 +18,8 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [filterMode, setFilterMode] = useState<FilterMode>('standard');
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [itemsPerPage, setItemsPerPage] = useState<number>(24);
 
   const initialFilters: Filters = {
     searchTerm: '',
@@ -34,82 +37,81 @@ const App: React.FC = () => {
   };
   const [filters, setFilters] = useState<Filters>(initialFilters);
 
-  const fetchProducts = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setProducts([]);
+  useEffect(() => {
+    const fetchProducts = async () => {
+      setLoading(true);
+      setError(null);
+      setProducts([]);
 
-    if (allSources.length === 0) {
-      setError("Nicio sursă de date nu este configurată. Verificați directorul 'sources'.");
-      setLoading(false);
-      return;
-    }
-
-    const errors: string[] = [];
-
-    const processSource = async (source: DataSource): Promise<Product[]> => {
-       try {
-          const fetchOptions: RequestInit = { cache: 'no-store' };
-          
-          const res = source.fetcher 
-              ? await source.fetcher()
-              : await fetch(source.url!, fetchOptions);
-
-          if (!res.ok) {
-            throw new Error(`nu a putut fi încărcată (status: ${res.status}).`);
-          }
-
-          const text = await res.text();
-          if (!text.trim()) {
-            throw new Error('este un fișier gol.');
-          }
-          
-          const isXml = source.type === 'xml';
-          const parsedData = isXml
-              ? parseXMLData(text)
-              : parseCSVData(text, source.parserConfig.requiredHeaders);
-
-          const mappedData = source.map(parsedData);
-          
-          if (mappedData.length === 0) {
-            console.warn(`Sursa ${source.name} a returnat 0 produse după mapare.`);
-          }
-          
-          return mappedData;
-        } catch (e) {
-          console.error(`Error processing ${source.name}:`, e);
-          const errorMessage = e instanceof Error ? e.message : 'Eroare necunoscută la procesare.';
-          errors.push(`${source.name}: ${errorMessage}`);
-          return [];
-        }
-    };
-
-    try {
-      setLoadingMessage(`Se încarcă ${allSources.length} surse de date...`);
-      
-      const productArrays = await Promise.all(
-        allSources.map(source => processSource(source))
-      );
-      
-      const allProducts = productArrays.flat();
-      setProducts(allProducts);
-
-      if (errors.length > 0) {
-          setError(errors.join(' '));
+      if (allSources.length === 0) {
+        setError("Nicio sursă de date nu este configurată. Verificați directorul 'sources'.");
+        setLoading(false);
+        return;
       }
 
-    } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : 'A apărut o eroare necunoscută.';
-      setError(`A apărut o eroare la încărcarea produselor: ${errorMessage}`);
-    } finally {
-      setLoading(false);
-      setLoadingMessage('');
-    }
-  }, []);
+      const errors: string[] = [];
 
-  useEffect(() => {
+      const processSource = async (source: DataSource): Promise<Product[]> => {
+         try {
+            const fetchOptions: RequestInit = { cache: 'no-store' };
+            
+            const res = source.fetcher 
+                ? await source.fetcher()
+                : await fetch(source.url!, fetchOptions);
+
+            if (!res.ok) {
+              throw new Error(`nu a putut fi încărcată (status: ${res.status}).`);
+            }
+
+            const text = await res.text();
+            if (!text.trim()) {
+              throw new Error('este un fișier gol.');
+            }
+            
+            const isXml = source.type === 'xml';
+            const parsedData = isXml
+                ? parseXMLData(text)
+                : parseCSVData(text, source.parserConfig.requiredHeaders);
+
+            const mappedData = source.map(parsedData);
+            
+            if (mappedData.length === 0) {
+              console.warn(`Sursa ${source.name} a returnat 0 produse după mapare.`);
+            }
+            
+            return mappedData;
+          } catch (e) {
+            console.error(`Error processing ${source.name}:`, e);
+            const errorMessage = e instanceof Error ? e.message : 'Eroare necunoscută la procesare.';
+            errors.push(`${source.name}: ${errorMessage}`);
+            return [];
+          }
+      };
+
+      try {
+        setLoadingMessage(`Se încarcă ${allSources.length} surse de date...`);
+        
+        const productArrays = await Promise.all(
+          allSources.map(source => processSource(source))
+        );
+        
+        const allProducts = productArrays.flat();
+        setProducts(allProducts);
+
+        if (errors.length > 0) {
+            setError(errors.join(' '));
+        }
+
+      } catch (e) {
+        const errorMessage = e instanceof Error ? e.message : 'A apărut o eroare necunoscută.';
+        setError(`A apărut o eroare la încărcarea produselor: ${errorMessage}`);
+      } finally {
+        setLoading(false);
+        setLoadingMessage('');
+      }
+    };
     fetchProducts();
-  }, [fetchProducts]);
+  }, []);
 
   const baseFilteredProducts = useMemo(() => {
     return products.filter(product => {
@@ -213,6 +215,28 @@ const App: React.FC = () => {
     }
   }, [baseFilteredProducts, filters, filterMode]);
 
+  // Pagination logic
+  const totalPages = useMemo(() => {
+    if (itemsPerPage === 0) return 1; // 0 means 'All'
+    if (filteredProducts.length === 0) return 1;
+    return Math.ceil(filteredProducts.length / itemsPerPage);
+  }, [filteredProducts.length, itemsPerPage]);
+
+  const paginatedProducts = useMemo(() => {
+    if (itemsPerPage === 0) { // 'All' selected
+      return filteredProducts;
+    }
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredProducts.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredProducts, currentPage, itemsPerPage]);
+
+  // Effect to reset to page 1 when filters or items per page change
+  useEffect(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [filters, itemsPerPage]);
+
   const handleResetFilters = () => setFilters(initialFilters);
   const handleProductClick = (product: Product) => setSelectedProduct(product);
   const handleCloseModal = () => setSelectedProduct(null);
@@ -230,6 +254,29 @@ const App: React.FC = () => {
       );
     }
   }, [filters, filterMode, initialFilters]);
+
+  const displayInfo = useMemo(() => {
+    const totalFiltered = filteredProducts.length.toLocaleString('ro-RO');
+    const totalProducts = products.length.toLocaleString('ro-RO');
+    
+    if (products.length > 0 && filteredProducts.length === 0) {
+        return `Niciun produs găsit. (<strong>${totalProducts}</strong> produse în total)`;
+    }
+    
+    if (filteredProducts.length <= 0) {
+        return ``;
+    }
+
+    if (itemsPerPage === 0 || filteredProducts.length <= itemsPerPage) {
+        return `Afișare <strong>${totalFiltered}</strong> din <strong>${totalProducts}</strong> produse.`;
+    }
+    
+    const start = ((currentPage - 1) * itemsPerPage + 1).toLocaleString('ro-RO');
+    const end = Math.min(currentPage * itemsPerPage, filteredProducts.length).toLocaleString('ro-RO');
+    
+    return `Afișare <strong>${start} - ${end}</strong> din <strong>${totalFiltered}</strong> produse (<strong>${totalProducts}</strong> totale).`;
+
+  }, [filteredProducts.length, products.length, currentPage, itemsPerPage]);
 
   return (
     <div className="container mx-auto p-4 md:p-8">
@@ -258,14 +305,26 @@ const App: React.FC = () => {
         ) : (
           <>
             <div className="text-left text-gray-600 mb-4">
-                Afișare <strong>{filteredProducts.length}</strong> din <strong>{products.length.toLocaleString('ro-RO')}</strong> produse.
-                {products.length === 0 && !loading && <span className="ml-2">Niciun produs nu a putut fi încărcat.</span>}
+               {products.length === 0 && !loading 
+                    ? <span className="ml-2">Niciun produs nu a putut fi încărcat.</span>
+                    : <span dangerouslySetInnerHTML={{ __html: displayInfo }} />
+               }
             </div>
             
             {filteredProducts.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {filteredProducts.map((product, index) => <ProductCard key={`${product['PartNumber']}-${index}`} product={product} onProductClick={handleProductClick} />)}
-                </div>
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                      {paginatedProducts.map((product, index) => <ProductCard key={`${product['PartNumber']}-${index}`} product={product} onProductClick={handleProductClick} />)}
+                  </div>
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={totalPages}
+                    itemsPerPage={itemsPerPage}
+                    totalItems={filteredProducts.length}
+                    onPageChange={setCurrentPage}
+                    onItemsPerPageChange={setItemsPerPage}
+                  />
+                </>
             ) : (
                 <div className="text-center text-gray-500 mt-12 bg-white shadow-md rounded-lg p-8">
                     <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
