@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
 import { Product, Filters, AvailableOptions, FilterMode, DataSource } from './types';
 import ProductCard from './components/ProductCard';
 import FilterControls from './components/FilterControls';
+import ActiveFilters from './components/ActiveFilters';
 import Spinner from './components/Spinner';
 import Pagination from './components/Pagination';
 import { allSources } from './sources';
@@ -397,6 +398,13 @@ const App: React.FC = () => {
         onReset={handleResetFilters}
         filterMode={filterMode}
         setFilterMode={setFilterMode}
+      />
+      
+      <ActiveFilters
+        filters={filters}
+        setFilters={setFilters}
+        initialFilters={initialFilters}
+        onReset={handleResetFilters}
       />
 
       <main>
