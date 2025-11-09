@@ -1,9 +1,11 @@
+
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
+import { translateText } from '../utils/translator';
 
 // Maps data from the first source to the unified product structure
-const map = (data: Product[]): Product[] => {
-  return data
+const map = async (data: Product[]): Promise<Product[]> => {
+  const initialProducts = data
     .filter(p => p && p['PartNumber'] && String(p['PartNumber']).trim() !== '')
     .map(p => {
       const priceStr = String(p['Pret client in lei/buc'] || '0');
@@ -32,8 +34,27 @@ const map = (data: Product[]): Product[] => {
         ProductType: 'Jante',
       };
 
-      return normalizeProductAttributes(product);
+      return product;
     });
+
+  // Translate and normalize product data in parallel for efficiency
+  return Promise.all(initialProducts.map(async product => {
+    const [
+      translatedDesc,
+      translatedFinish
+    ] = await Promise.all([
+      translateText(product.PartDescription),
+      translateText(product.Finish)
+    ]);
+
+    const translatedProduct: Product = {
+      ...product,
+      PartDescription: translatedDesc,
+      Finish: translatedFinish,
+    };
+
+    return normalizeProductAttributes(translatedProduct);
+  }));
 };
 
 export const source1: DataSource = {

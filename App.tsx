@@ -158,7 +158,7 @@ const App: React.FC = () => {
                 ? parseXMLData(text)
                 : parseCSVData(text, source.parserConfig.requiredHeaders);
 
-            const mappedData = source.map(parsedData);
+            const mappedData = await source.map(parsedData);
             
             if (mappedData.length === 0) {
               console.warn(`Sursa ${source.name} a returnat 0 produse după mapare.`);

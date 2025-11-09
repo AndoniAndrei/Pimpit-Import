@@ -1,9 +1,10 @@
 
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
+import { translateText } from '../utils/translator';
 
-const map = (data: Product[]): Product[] => {
-  return data
+const map = async (data: Product[]): Promise<Product[]> => {
+  const initialProducts = data
     .filter(p => p && p.part_number)
     .map(p => {
       // 1. Price Calculation Logic
@@ -70,8 +71,30 @@ const map = (data: Product[]): Product[] => {
         //... any other fields from the XML can be added here
       };
       
-      return normalizeProductAttributes(product);
+      return product;
     });
+
+    // Translate and normalize product data in parallel for efficiency
+    return Promise.all(initialProducts.map(async product => {
+      const [
+        translatedDesc,
+        translatedFinish,
+        translatedLongDesc
+      ] = await Promise.all([
+        translateText(product.PartDescription),
+        translateText(product.Finish),
+        translateText(product.Description)
+      ]);
+
+      const translatedProduct: Product = {
+        ...product,
+        PartDescription: translatedDesc,
+        Finish: translatedFinish,
+        Description: translatedLongDesc,
+      };
+
+      return normalizeProductAttributes(translatedProduct);
+    }));
 };
 
 /**

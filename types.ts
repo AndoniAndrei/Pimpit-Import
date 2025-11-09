@@ -45,6 +45,6 @@ export interface DataSource {
   url?: string; // Made optional to support fetcher
   type?: 'csv' | 'xml';
   parserConfig: ParserConfig;
-  map: (data: any[]) => Product[];
-  fetcher?: () => Promise<Response>; // Added custom fetcher for resilient sources
+  map: (data: any[]) => Promise<Product[]>; // Added custom fetcher for resilient sources
+  fetcher?: () => Promise<Response>;
 }
