@@ -1,4 +1,3 @@
-
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
 
@@ -73,29 +72,28 @@ const map = (data: Product[]): Product[] => {
  * This function calls a local API endpoint which handles the API key securely.
  */
 const fetcher = async (): Promise<Response> => {
-    // Our secure, server-side proxy endpoint. This path should correspond
-    // to a serverless function (e.g., /api/wheeltrade.ts).
-    const proxyUrl = '/api/wheeltrade'; 
+    const proxyUrl = '/api/wheeltrade';
 
     try {
         const response = await fetch(proxyUrl, { cache: 'no-store' });
         
         if (!response.ok) {
-             let errorDetails = `Proxy-ul intern a eșuat cu status: ${response.status}.`;
-             try {
+            let errorDetails = `Proxy-ul intern a eșuat cu status: ${response.status}.`;
+            try {
+                // The proxy now reliably returns a JSON object on error.
                 const errorData = await response.json();
-                if (errorData.error && errorData.error.includes('API key is not configured')) {
-                    errorDetails = 'Cheia API nu este configurată corect pe server. Vă rugăm să contactați administratorul platformei.';
+                if (errorData.details) {
+                    errorDetails = `Mesaj de la furnizor: "${errorData.details}"`;
+                } else if (errorData.error) {
+                    errorDetails = errorData.error;
                 }
-             } catch (e) {
-                // Response was not JSON, stick with the status code error.
-             }
-             throw new Error(errorDetails);
-        }
-
-        const text = await response.clone().text();
-        if (!text.trim().startsWith('<')) {
-            throw new Error('Răspunsul primit de la sursă nu este un fișier XML valid.');
+            } catch (e) {
+                // Fallback if the response isn't JSON for some unexpected reason
+                errorDetails = `Proxy-ul a returnat o eroare neașteptată (status ${response.status}).`;
+            }
+            // Add a helpful tip for the user
+            errorDetails += " Vă rugăm să verificați dacă cheia API a fost copiată corect în secretele platformei.";
+            throw new Error(errorDetails);
         }
 
         return response;
