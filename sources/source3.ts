@@ -37,7 +37,12 @@ const map = (data: Product[]): Product[] => {
       // 3. Product Type Categorization
       const productType = (p.thickness || p.thread_size) ? 'Accesorii' : 'Jante';
 
-      // 4. Map to unified Product structure
+      // 4. Extract ET from name field as a fallback
+      const name = String(p.name || '');
+      const etMatch = name.match(/\bET(-?\d+(?:-\d+)?)\b/i);
+      const extractedOffset = etMatch ? etMatch[1] : undefined;
+      
+      // 5. Map to unified Product structure
       const product: Product = {
         PartNumber: p.part_number,
         EAN: p.ean,
@@ -48,7 +53,7 @@ const map = (data: Product[]): Product[] => {
         Size: p.size,
         Width: p.width,
         PCD: p.pcd,
-        Offset: p.offset,
+        Offset: p.et || extractedOffset,
         CB: p.center_bore,
         Stock: Math.floor(parseFloat(String(p.stock || '0').replace(',', '.'))) || 0,
         Price: Math.round(finalPriceRon),
