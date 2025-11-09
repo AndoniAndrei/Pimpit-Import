@@ -1,3 +1,4 @@
+
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
 
@@ -47,6 +48,7 @@ const map = (data: Product[]): Product[] => {
         Size: p.size,
         Width: p.width,
         PCD: p.pcd,
+        Offset: p.offset,
         CB: p.center_bore,
         Stock: Math.floor(parseFloat(String(p.stock || '0').replace(',', '.'))) || 0,
         Price: Math.round(finalPriceRon),

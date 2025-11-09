@@ -203,44 +203,50 @@ const App: React.FC = () => {
 
   const availableOptions = useMemo<AvailableOptions>(() => {
     const getRawUniqueValues = (items: Product[], key: string): any[] => {
-      return [...new Set(items.map(p => p[key]).filter(v => v !== null && v !== undefined && v !== ''))];
+        return [...new Set(items.map(p => p[key]).filter(v => v !== null && v !== undefined && v !== ''))];
     };
-    
-    const sortNumeric = (arr: string[]) => arr.sort((a,b) => String(a).localeCompare(String(b), undefined, {numeric: true}));
+    const sortNumeric = (arr: string[]) => arr.sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
 
-    const preFilteredProducts = products.filter(p => {
-        if(filters.searchTerm && !(String(p['PartDescription']||'').toLowerCase().includes(filters.searchTerm.toLowerCase()) || String(p['PartNumber']||'').toLowerCase().includes(filters.searchTerm.toLowerCase()) || String(p['EAN']||'').toLowerCase().includes(filters.searchTerm.toLowerCase()))) return false;
-        if(filters.ProductType !== 'all' && p.ProductType !== filters.ProductType) return false;
+    // Base set for generating options, filtered only by what's globally relevant (search, product type)
+    const optionsBaseProducts = products.filter(p => {
+        if (filters.searchTerm && !(String(p['PartDescription'] || '').toLowerCase().includes(filters.searchTerm.toLowerCase()) || String(p['PartNumber'] || '').toLowerCase().includes(filters.searchTerm.toLowerCase()) || String(p['EAN'] || '').toLowerCase().includes(filters.searchTerm.toLowerCase()))) return false;
+        if (filters.ProductType !== 'all' && p.ProductType !== filters.ProductType) return false;
         return true;
     });
 
+    // Create sequentially filtered sets for cascading options logic
+    const brandFiltered = optionsBaseProducts.filter(p => filters.Brand === 'all' || p.Brand === filters.Brand);
+    const sizeFiltered = brandFiltered.filter(p => filters.Size === 'all' || String(p.Size) === filters.Size);
+    const pcdFiltered = sizeFiltered.filter(p => filters.PCD === 'all' || productMatchesFilter(p.PCD, filters.PCD, 'PCD'));
+
+    // Initialize the options object
     const newOptions: AvailableOptions = {
         ProductType: sortNumeric(getRawUniqueValues(products, 'ProductType').map(String)),
-        Brand: sortNumeric(getRawUniqueValues(preFilteredProducts, 'Brand').map(String)),
-        Finish: sortNumeric(getRawUniqueValues(preFilteredProducts.filter(p => filters.Brand === 'all' || p.Brand === filters.Brand), 'Finish').map(String)),
-        Size: sortNumeric(getRawUniqueValues(preFilteredProducts.filter(p => (filters.Brand === 'all' || p.Brand === filters.Brand) && (filters.Finish === 'all' || p.Finish === filters.Finish)), 'Size').map(String)),
-        PCD: [], Width: [], Offset: [], Width_Front: [], Offset_Front: [], Width_Rear: [], Offset_Rear: []
+        Brand: sortNumeric(getRawUniqueValues(optionsBaseProducts, 'Brand').map(String)),
+        Finish: sortNumeric(getRawUniqueValues(brandFiltered, 'Finish').map(String)),
+        Size: sortNumeric(getRawUniqueValues(brandFiltered, 'Size').map(String)),
+        PCD: sortNumeric(expandPcdValues(getRawUniqueValues(sizeFiltered, 'PCD'))),
+        Width: [], Offset: [], Width_Front: [], Offset_Front: [], Width_Rear: [], Offset_Rear: []
     };
     
-    const pcdSourceProducts = preFilteredProducts.filter(p => (filters.Brand === 'all' || p.Brand === filters.Brand) && (filters.Finish === 'all' || p.Finish === filters.Finish) && (filters.Size === 'all' || String(p.Size) === filters.Size));
-    newOptions.PCD = sortNumeric(expandPcdValues(getRawUniqueValues(pcdSourceProducts, 'PCD')));
-    
-    const allWidths = sortNumeric(getRawUniqueValues(baseFilteredProducts, 'Width').map(String));
+    // Width options depend on Brand, Size, and PCD
+    const allWidths = sortNumeric(getRawUniqueValues(pcdFiltered, 'Width').map(String));
     newOptions.Width = allWidths;
     newOptions.Width_Front = allWidths;
     newOptions.Width_Rear = allWidths;
-    
-    const offsetStandardProducts = baseFilteredProducts.filter(p => filters.Width === 'all' || String(p.Width) === filters.Width);
+
+    // Offset options depend on Brand, Size, PCD, and Width
+    const offsetStandardProducts = pcdFiltered.filter(p => filters.Width === 'all' || String(p.Width) === filters.Width);
     newOptions.Offset = sortNumeric(expandOffsetValues(getRawUniqueValues(offsetStandardProducts, 'Offset')));
-    
-    const offsetFrontProducts = baseFilteredProducts.filter(p => filters.Width_Front === 'all' || String(p.Width) === filters.Width_Front);
+
+    const offsetFrontProducts = pcdFiltered.filter(p => filters.Width_Front === 'all' || String(p.Width) === filters.Width_Front);
     newOptions.Offset_Front = sortNumeric(expandOffsetValues(getRawUniqueValues(offsetFrontProducts, 'Offset')));
     
-    const offsetRearProducts = baseFilteredProducts.filter(p => filters.Width_Rear === 'all' || String(p.Width) === filters.Width_Rear);
+    const offsetRearProducts = pcdFiltered.filter(p => filters.Width_Rear === 'all' || String(p.Width) === filters.Width_Rear);
     newOptions.Offset_Rear = sortNumeric(expandOffsetValues(getRawUniqueValues(offsetRearProducts, 'Offset')));
-    
+
     return newOptions;
-  }, [products, filters, baseFilteredProducts]);
+  }, [products, filters]);
 
   useEffect(() => {
     const newFilters = { ...filters };
