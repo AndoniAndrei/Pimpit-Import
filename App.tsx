@@ -47,7 +47,7 @@ const App: React.FC = () => {
 
     const errors: string[] = [];
 
-    const processSource = async (source: DataSource) => {
+    const processSource = async (source: DataSource): Promise<Product[]> => {
        try {
           const fetchOptions: RequestInit = { cache: 'no-store' };
           
@@ -85,18 +85,14 @@ const App: React.FC = () => {
     };
 
     try {
-      setLoadingMessage(`Se încarcă sursele...`);
+      setLoadingMessage(`Se încarcă ${allSources.length} surse de date...`);
       
-      const promises = allSources.map(source => {
-        setLoadingMessage(`Se încarcă ${source.name}...`);
-        return processSource(source).then(newProducts => {
-          if (newProducts.length > 0) {
-             setProducts(prevProducts => [...prevProducts, ...newProducts]);
-          }
-        });
-      });
-
-      await Promise.all(promises);
+      const productArrays = await Promise.all(
+        allSources.map(source => processSource(source))
+      );
+      
+      const allProducts = productArrays.flat();
+      setProducts(allProducts);
 
       if (errors.length > 0) {
           setError(errors.join(' '));
