@@ -48,28 +48,16 @@ export default async function handler(req: Request): Promise<Response> {
         }
       );
     }
-
-    const contentType = apiResponse.headers.get('content-type');
-    if (!contentType || !contentType.includes('xml')) {
-        const responseBody = await apiResponse.text();
-        console.error(`Wheeltrade API did not return XML. Content-Type: ${contentType}. Body: ${responseBody.slice(0, 500)}`);
-        return new Response(
-          JSON.stringify({
-            error: "Sursa 3 nu a returnat un răspuns XML valid.",
-            details: `Tipul de conținut primit: ${contentType}. Începutul răspunsului: ${responseBody.slice(0, 200)}...`
-          }),
-          {
-            status: 502,
-            headers: { 'Content-Type': 'application/json' }
-          }
-        );
-    }
+    
+    // The content type is forwarded directly to the client, which will decide how to parse it.
+    // This makes the proxy more flexible if the source format changes from XML to CSV, etc.
+    const headers = new Headers();
+    headers.set('Content-Type', apiResponse.headers.get('Content-Type') || 'text/plain');
+    headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
 
     return new Response(apiResponse.body, {
-      headers: {
-        'Content-Type': 'application/xml; charset=utf-8',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-      },
+      headers: headers,
+      status: apiResponse.status,
     });
 
   } catch (error) {

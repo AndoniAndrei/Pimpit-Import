@@ -108,11 +108,11 @@ const fetcher = async (): Promise<Response> => {
 
 export const source3: DataSource = {
   name: 'Sursa 3',
-  type: 'xml',
-  fetcher, // Use the new secure server-side fetcher
+  type: 'csv', // The API is returning CSV, not XML.
+  fetcher, // Use the secure server-side fetcher
   parserConfig: {
-    // Not needed for XML, but required by the interface for consistency
-    requiredHeaders: [], 
+    // Define the headers required for the CSV parser to identify the data correctly.
+    requiredHeaders: ['part_number', 'brand', 'your_net_price'],
   },
   map,
 };
