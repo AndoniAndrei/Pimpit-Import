@@ -156,7 +156,7 @@ const App: React.FC = () => {
             const isXml = source.type === 'xml';
             const parsedData = isXml
                 ? parseXMLData(text)
-                : parseCSVData(text, source.parserConfig.requiredHeaders);
+                : parseCSVData(text, source.parserConfig);
 
             const mappedData = await source.map(parsedData);
             

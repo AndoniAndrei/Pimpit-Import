@@ -1,3 +1,4 @@
+
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
 
@@ -19,7 +20,7 @@ const map = async (data: Product[]): Promise<Product[]> => {
       // 3. PCD combination
       const pcd1 = String(p['rozstaw'] || '').trim();
       const pcd2 = String(p['rozstaw2'] || '').trim();
-      const combinedPcd = [pcd1, pcd2].filter(Boolean).join(', ');
+      const combinedPcd = [pcd1, pcd2].filter(Boolean).join('/');
 
       // 4. Image splitting
       const imageUrls = String(p['zdjęcie'] || '')
@@ -88,13 +89,47 @@ const fetcher = async (): Promise<Response> => {
     }
 };
 
+const columnMapping = [
+  '', // A
+  'internal_code', // B
+  'sku', // C
+  'producent', // D
+  'model', // E
+  'średnica', // F
+  'szerokość', // G
+  'rozstaw', // H
+  'rozstaw2', // I
+  'et', // J
+  'otwór', // K
+  '', // L
+  'kolor', // M
+  'stan_magazynowy_producenta', // N
+  'stan_magazynowy_własny', // O
+  '', // P
+  '', // Q
+  '', // R
+  'cena_zakupu_netto_eur', // S
+  '', // T
+  '', // U
+  '', // V
+  '', // W
+  'waga_netto_kg', // X
+  'nośność', // Y
+  'technologia_produkcji', // Z
+  '', // AA
+  'zdjęcie', // AB
+  '', // AC
+  'wklęsłość', // AD
+  'nazwa_produktu', // AE
+];
+
 
 export const source4: DataSource = {
   name: 'Sursa 4',
   type: 'csv',
   fetcher,
   parserConfig: {
-    requiredHeaders: ['sku', 'producent', 'cena_zakupu_netto_eur'],
+    columnMapping: columnMapping,
   },
   map,
 };

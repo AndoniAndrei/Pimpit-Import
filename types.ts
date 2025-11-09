@@ -37,7 +37,8 @@ export interface AvailableOptions {
 }
 
 export interface ParserConfig {
-  requiredHeaders: string[];
+  requiredHeaders?: string[];
+  columnMapping?: string[];
 }
 
 export interface DataSource {
