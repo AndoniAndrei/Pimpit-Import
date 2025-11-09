@@ -11,24 +11,32 @@ const cleanValue = (value: any): string => {
     return strValue.trim().toUpperCase() === '#N/A' ? '' : strValue;
 };
 
-// Formats a potentially long, comma-separated list of consecutive numbers into a range.
+// Formats a potentially long, comma-separated list of consecutive numbers into a range for display.
 const formatDisplayOffset = (offset: any): string => {
-    const offsetStr = String(offset || '');
-    // If it's not a list or is already a range, return it as is.
-    if (!offsetStr.includes(',') || /^-?\d+--?\d+$/.test(offsetStr)) {
+    const offsetStr = String(offset || '').trim();
+    if (!offsetStr) return '';
+
+    // If the value is already a standard range (e.g., "20-51"), return it directly.
+    if (/^-?\d+-\d+$/.test(offsetStr)) {
         return offsetStr;
     }
 
+    // If it's not a comma-separated list, it's a single value. Return it.
+    if (!offsetStr.includes(',')) {
+        return offsetStr;
+    }
+    
+    // It's a list. Try to format it as a range if consecutive.
     const parts = offsetStr.split(',').map(s => s.trim());
     const numbers = parts.map(p => parseInt(p, 10));
 
-    // If any part is not a valid number, return the original string.
+    // If any part is not a valid number, it's a complex string; return as is.
     if (numbers.some(n => isNaN(n))) {
         return offsetStr;
     }
 
-    // If it's a consecutive list of numbers, format as a range.
-    if (numbers.length > 2) {
+    // If it's a list of 3 or more consecutive numbers, format as a range.
+    if (numbers.length >= 3) {
         numbers.sort((a, b) => a - b);
         let isConsecutive = true;
         for (let i = 1; i < numbers.length; i++) {
@@ -42,7 +50,8 @@ const formatDisplayOffset = (offset: any): string => {
         }
     }
     
-    return offsetStr; // Fallback to original string if not consecutive.
+    // It's a non-consecutive list, so just return the original (cleaned) string.
+    return numbers.join(', ');
 };
 
 const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {

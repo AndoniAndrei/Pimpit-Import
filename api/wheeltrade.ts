@@ -1,8 +1,8 @@
 // This is a server-side file and will not be sent to the browser.
-// It can safely access environment variables.
+// It can safely access environment variables. 
 
 // This configures the function to run on Vercel's Edge Runtime.
-// This can resolve deployment issues and improve performance.
+// This can resolve deployment issue s and improve performance.
 export const config = {
   runtime: 'edge',
 };

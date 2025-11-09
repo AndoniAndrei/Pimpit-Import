@@ -379,7 +379,7 @@ const App: React.FC = () => {
   return (
     <div className="container mx-auto p-4 md:p-8">
       <header className="text-center mb-8">
-        <h1 className="text-4xl md:text-5xl font-bold text-gray-800">Catalog Produse B2B</h1>
+        <h1 className="text-4xl md:text-5xl font-bold text-gray-800">Pimpit.ro</h1>
         <p className="text-gray-500 mt-2">Catalog Furnizori Piese Auto</p>
         {!loading && !error && products.length > 0 && (
           <p className="text-lg text-gray-700 mt-4 font-light">
