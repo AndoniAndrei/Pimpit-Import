@@ -11,6 +11,40 @@ const cleanValue = (value: any): string => {
     return strValue.trim().toUpperCase() === '#N/A' ? '' : strValue;
 };
 
+// Formats a potentially long, comma-separated list of consecutive numbers into a range.
+const formatDisplayOffset = (offset: any): string => {
+    const offsetStr = String(offset || '');
+    // If it's not a list or is already a range, return it as is.
+    if (!offsetStr.includes(',') || /^-?\d+--?\d+$/.test(offsetStr)) {
+        return offsetStr;
+    }
+
+    const parts = offsetStr.split(',').map(s => s.trim());
+    const numbers = parts.map(p => parseInt(p, 10));
+
+    // If any part is not a valid number, return the original string.
+    if (numbers.some(n => isNaN(n))) {
+        return offsetStr;
+    }
+
+    // If it's a consecutive list of numbers, format as a range.
+    if (numbers.length > 2) {
+        numbers.sort((a, b) => a - b);
+        let isConsecutive = true;
+        for (let i = 1; i < numbers.length; i++) {
+            if (numbers[i] !== numbers[i - 1] + 1) {
+                isConsecutive = false;
+                break;
+            }
+        }
+        if (isConsecutive) {
+            return `${numbers[0]}-${numbers[numbers.length - 1]}`;
+        }
+    }
+    
+    return offsetStr; // Fallback to original string if not consecutive.
+};
+
 const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {
   const imageUrls = useMemo(() => product['ImageUrls'] || [], [product]);
   const [mainImage, setMainImage] = useState<string>(imageUrls[0] || `https://via.placeholder.com/600x450.png?text=Imagine+indisponibila`);
@@ -30,20 +64,30 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {
     };
   }, [onClose]);
   
-  const specifications = useMemo(() => [
-    { key: 'EAN', label: 'EAN' },
-    { key: 'Finish', label: 'Finish' },
-    { key: 'Size', label: 'Size' },
-    { key: 'Width', label: 'Width' },
-    { key: 'PCD', label: 'PCD' },
-    { key: 'Offset', label: 'Offset' },
-    { key: 'CB', label: 'CB' },
-    { key: 'Load', label: 'Load' },
-    { key: 'Weight', label: 'Weight' },
-    { key: 'Model', label: 'Model' },
-    { key: 'TuvUrl', label: 'TUV' },
-  ].map(spec => ({ ...spec, value: cleanValue(product[spec.key]) }))
-   .filter(spec => spec.value), [product]);
+  const specifications = useMemo(() => {
+    const baseSpecs = [
+      { key: 'EAN', label: 'EAN' },
+      { key: 'Finish', label: 'Finish' },
+      { key: 'Size', label: 'Size' },
+      { key: 'Width', label: 'Width' },
+      { key: 'PCD', label: 'PCD' },
+      { key: 'Offset', label: 'Offset' },
+      { key: 'CB', label: 'CB' },
+      { key: 'Load', label: 'Load' },
+      { key: 'Weight', label: 'Weight' },
+      { key: 'Model', label: 'Model' },
+      { key: 'TuvUrl', label: 'TUV' },
+    ];
+
+    return baseSpecs.map(spec => {
+        let value = cleanValue(product[spec.key]);
+        if (spec.key === 'Offset') {
+            value = formatDisplayOffset(value);
+        }
+        return { ...spec, value };
+      }).filter(spec => spec.value);
+
+  }, [product]);
 
   const productBrand = cleanValue(product['Brand']);
   const productDescription = cleanValue(product['PartDescription']);
