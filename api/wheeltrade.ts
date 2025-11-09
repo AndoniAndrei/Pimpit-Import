@@ -34,13 +34,20 @@ export default async function handler(req: Request): Promise<Response> {
       cache: 'no-store',
     });
 
-    if (!apiResponse.ok) {
-      const errorBody = await apiResponse.text();
-      console.error(`Wheeltrade API Error (Status: ${apiResponse.status}): ${errorBody}`);
+    // Get the body text regardless of the initial status code
+    const responseBodyText = await apiResponse.text();
+
+    // The API might return valid data with a non-200 status.
+    // We check if the response body looks like the expected CSV header.
+    const isLikelyCsvData = responseBodyText.trim().toLowerCase().startsWith('brand;name;model');
+    
+    // If the response is not "ok" AND it doesn't contain the data we expect, it's a real error.
+    if (!apiResponse.ok && !isLikelyCsvData) {
+      console.error(`Wheeltrade API Error (Status: ${apiResponse.status}): ${responseBodyText}`);
       return new Response(
         JSON.stringify({ 
           error: "Eroare la comunicarea cu Sursa 3.", 
-          details: errorBody.trim() || `Furnizorul a răspuns cu status ${apiResponse.status}.`
+          details: responseBodyText.trim() || `Furnizorul a răspuns cu status ${apiResponse.status}.`
         }),
         {
           status: 502, // Bad Gateway
@@ -49,15 +56,15 @@ export default async function handler(req: Request): Promise<Response> {
       );
     }
     
-    // The content type is forwarded directly to the client, which will decide how to parse it.
-    // This makes the proxy more flexible if the source format changes from XML to CSV, etc.
+    // If we are here, it's either a successful response or a "failed" response that contains our data.
+    // We treat it as a success and forward the data with a 200 OK status.
     const headers = new Headers();
-    headers.set('Content-Type', apiResponse.headers.get('Content-Type') || 'text/plain');
+    headers.set('Content-Type', apiResponse.headers.get('Content-Type') || 'text/csv; charset=utf-8');
     headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
 
-    return new Response(apiResponse.body, {
+    return new Response(responseBodyText, {
       headers: headers,
-      status: apiResponse.status,
+      status: 200, // Force a 200 OK status for the client
     });
 
   } catch (error) {
