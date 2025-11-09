@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Product } from '../types';
 
@@ -31,23 +30,20 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {
     };
   }, [onClose]);
   
-  const displayedKeys = new Set([
-      'PartNumber', 'PartDescription', 'Brand', 'Price', 'Stock', 'OnTheWaterStock', 
-      'ImageUrl', 'ImageUrls', 'Source', 'Model', 'TuvUrl', 'YoutubeUrl', 'ThreeSixtyImageUrl', 'Description', 'ProductType',
-      // Original keys from source files that are now unified
-      'Pret client in lei/buc', '7001', 'On the water', 'Image URL', 'Image URL 1', 'Image URL 2', 'Image URL 3', 'Image URL 4', 
-      'SKU', 'PRICE_RON', 'STOCK_RO', 'IMAGE', 'COLOR', 'UID', 'PRICE', 'DESIGN', 'IMG',
-      'brand', 'name', 'model', 'part_number', 'your_net_price', 'suggested_retail_price', 'ean', 'photo', 'photo1', 'photo2', 'photo3', 'photo4', 'photo5',
-      'link_3d', 'youtube_link', 'description', 'decsription',
-      ''
-  ]);
-
-  const otherDetails = Object.entries(product).filter(([key, value]) => 
-    !displayedKeys.has(key) && 
-    value && 
-    String(value).trim() !== '' && 
-    String(value).trim().toUpperCase() !== '#N/A'
-  );
+  const specifications = useMemo(() => [
+    { key: 'EAN', label: 'EAN' },
+    { key: 'Finish', label: 'Finish' },
+    { key: 'Size', label: 'Size' },
+    { key: 'Width', label: 'Width' },
+    { key: 'PCD', label: 'PCD' },
+    { key: 'Offset', label: 'Offset' },
+    { key: 'CB', label: 'CB' },
+    { key: 'Load', label: 'Load' },
+    { key: 'Weight', label: 'Weight' },
+    { key: 'Model', label: 'Model' },
+    { key: 'TuvUrl', label: 'TUV' },
+  ].map(spec => ({ ...spec, value: cleanValue(product[spec.key]) }))
+   .filter(spec => spec.value), [product]);
 
   const productBrand = cleanValue(product['Brand']);
   const productDescription = cleanValue(product['PartDescription']);
@@ -162,17 +158,27 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {
                     </div>
                )}
                
-               <div>
-                 <h4 className="text-lg font-semibold text-gray-800 mb-3">Specificații</h4>
-                  <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                      {otherDetails.map(([key, value]) => (
-                          <div key={key} className="bg-gray-50 p-2 rounded-md">
-                              <dt className="font-medium text-gray-500 truncate">{key}</dt>
-                              <dd className="text-gray-900 font-semibold truncate">{String(value)}</dd>
-                          </div>
-                      ))}
-                  </dl>
-               </div>
+               {specifications.length > 0 && (
+                  <div>
+                    <h4 className="text-lg font-semibold text-gray-800 mb-3">Specificații</h4>
+                     <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3 text-sm">
+                         {specifications.map(({ key, label, value }) => (
+                             <div key={key} className="bg-gray-50 p-2 rounded-md">
+                                 <dt className="font-medium text-gray-500 truncate">{label}</dt>
+                                 {label === 'TUV' ? (
+                                    <dd className="text-gray-900 font-semibold truncate">
+                                        <a href={value} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                        Descarcă Certificat
+                                        </a>
+                                    </dd>
+                                    ) : (
+                                    <dd className="text-gray-900 font-semibold truncate">{String(value)}</dd>
+                                    )}
+                             </div>
+                         ))}
+                     </dl>
+                  </div>
+               )}
            </div>
         </div>
       </div>

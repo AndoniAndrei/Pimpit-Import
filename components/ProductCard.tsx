@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Product } from '../types';
 
@@ -59,7 +58,16 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onProductClick }) =>
             <p>Cod: {productCode}</p>
         </div>
         
-        <div className="text-sm text-gray-600 mt-2 flex-grow min-h-[40px]">
+        {(product.Size || product.Width || product.PCD || product.Offset) && (
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-700 my-2 py-2 border-y">
+                {product.Size && <p><strong className="font-normal text-gray-500">R:</strong> {product.Size}</p>}
+                {product.Width && <p><strong className="font-normal text-gray-500">J:</strong> {product.Width}</p>}
+                {product.PCD && <p><strong className="font-normal text-gray-500">PCD:</strong> {product.PCD}</p>}
+                {product.Offset && <p><strong className="font-normal text-gray-500">ET:</strong> {product.Offset}</p>}
+            </div>
+        )}
+        
+        <div className="text-sm text-gray-600 flex-grow">
           <p>Stoc Depozit: <strong className={hasStock ? "text-green-600" : "text-red-600"}>{stock} buc.</strong></p>
           {onTheWater > 0 && <p>Stoc "On the water": <strong className="text-blue-600">{onTheWater} buc.</strong></p>}
         </div>
