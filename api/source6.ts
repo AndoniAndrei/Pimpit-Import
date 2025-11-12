@@ -4,97 +4,112 @@ export const config = {
   runtime: 'edge',
 };
 
+/**
+ * Handles authentication for Source 6, which uses a modern Next.js (NextAuth) flow.
+ * This version correctly simulates the multi-step browser login process.
+ */
 export default async function handler(req: Request): Promise<Response> {
-  const loginUrl = 'https://statusfalgar.se/loggain';
+  const loginPageUrl = 'https://statusfalgar.se/loggain';
+  const csrfApiUrl = 'https://statusfalgar.se/api/auth/csrf';
+  const loginApiUrl = 'https://statusfalgar.se/api/auth/callback/credentials';
   const dataUrl = 'https://statusfalgar.se/api/PriceList';
   
   const username = "office@pimpit.ro";
   const password = "40785733102";
-
-  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36';
+  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36';
 
   try {
-    // --- Step 1: Visit the login page to establish an initial session cookie ---
-    // This step is often necessary to get a session cookie that the server expects
-    // to see in the subsequent POST request.
-    const initialPageResponse = await fetch(loginUrl, {
-      headers: {
-        'User-Agent': userAgent,
+    // --- Step 1: Visit the login page to get the initial CSRF cookie ---
+    const pageResponse = await fetch(loginPageUrl, {
+      headers: { 'User-Agent': userAgent },
+    });
+
+    if (!pageResponse.ok) {
+      throw new Error(`Eroare la accesarea paginii de login (status: ${pageResponse.status})`);
+    }
+    
+    // In Vercel Edge, getSetCookie() is available.
+    const initialCookiesArray = (pageResponse.headers as any).getSetCookie();
+    if (!initialCookiesArray || initialCookiesArray.length === 0) {
+        throw new Error("Nu s-a putut obține cookie-ul inițial de pe pagina de login.");
+    }
+
+    const initialCookies = initialCookiesArray.map((c: string) => c.split(';')[0]).join('; ');
+
+    // --- Step 2: Get the CSRF token value from the dedicated API, using the initial cookie ---
+    const csrfResponse = await fetch(csrfApiUrl, {
+      headers: { 
+          'User-Agent': userAgent,
+          'Cookie': initialCookies,
       },
     });
 
-    if (!initialPageResponse.ok) {
-        throw new Error(`Failed to load login page (status: ${initialPageResponse.status})`);
-    }
-
-    const initialCookie = initialPageResponse.headers.get('set-cookie');
-
-    if (!initialCookie) {
-       return new Response(
-        JSON.stringify({
-          error: "Autentificare eșuată pentru Sursa 6.",
-          details: "Nu s-a putut stabili sesiunea inițială pe pagina de login."
-        }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
+    if (!csrfResponse.ok) {
+       throw new Error(`Eroare la obținerea token-ului CSRF (status: ${csrfResponse.status})`);
     }
     
-    // --- Step 2: Send the login POST request with credentials and the initial cookie ---
-    const loginBody = new URLSearchParams();
-    loginBody.append('Username', username);
-    loginBody.append('Password', password);
-    // No anti-forgery token is sent in this simplified, direct approach.
-
-    const loginResponse = await fetch(loginUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': userAgent,
-        'Cookie': initialCookie.split(';')[0], // Use the session cookie from step 1
-      },
-      body: loginBody.toString(),
-      redirect: 'manual', // We need to capture the auth cookie from the redirect
+    const csrfJson = await csrfResponse.json();
+    const csrfToken = csrfJson.csrfToken;
+    
+    if (!csrfToken) {
+      throw new Error("Răspunsul de la API-ul CSRF este invalid. Nu s-a putut obține token-ul.");
+    }
+    
+    // --- Step 3: Send the login request to the API with credentials and CSRF info ---
+    const loginPayload = new URLSearchParams({
+        username: username,
+        password: password,
+        csrfToken: csrfToken,
+        json: 'true',
     });
 
-    // --- Step 3: Check for successful login and extract the auth cookie ---
-    const setCookieHeader = loginResponse.headers.get('set-cookie');
+    const loginResponse = await fetch(loginApiUrl, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'User-Agent': userAgent,
+            'Cookie': initialCookies, // Send the same cookies we received from the login page
+        },
+        body: loginPayload.toString(),
+    });
 
-    // A successful login should result in a redirect (status 302) and a new, more powerful auth cookie.
-    if (loginResponse.status !== 302 || !setCookieHeader) {
-      console.error(`Source 6 Login Failed (Status: ${loginResponse.status})`);
-       return new Response(
-        JSON.stringify({
-          error: "Autentificare eșuată pentru Sursa 6.",
-          details: "Nu s-a putut obține cookie-ul de sesiune. Verificați credențialele sau este posibil ca procesul de login al furnizorului să se fi schimbat."
-        }),
-        { status: 401, headers: { 'Content-Type': 'application/json' } }
-      );
+    if (!loginResponse.ok) {
+       const errorBodyText = await loginResponse.text();
+       throw new Error(`API-ul de login a eșuat (status: ${loginResponse.status}). Răspuns: ${errorBodyText}`);
+    }
+
+    // --- Step 4: Extract the final session cookie(s) ---
+    const finalCookiesArray = (loginResponse.headers as any).getSetCookie();
+    if (!finalCookiesArray || finalCookiesArray.length === 0) {
+        throw new Error('Autentificare reușită, dar nu s-a primit niciun cookie de sesiune.');
     }
     
-    const authCookie = setCookieHeader.split(';')[0];
+    // Combine all cookies (initial CSRF + new session cookie) for the final request
+    const combinedCookies = [...initialCookiesArray, ...finalCookiesArray]
+      .map((c: string) => c.split(';')[0])
+      // Create a unique set of cookies, preferring the last seen value for a given name.
+      .reduce((acc: { [key: string]: string }, cookie: string) => {
+          const [key, value] = cookie.split('=');
+          acc[key] = value;
+          return acc;
+       }, {});
     
-    // --- Step 4: Fetch the data using the final auth cookie ---
+    const finalCookieString = Object.entries(combinedCookies).map(([key, value]) => `${key}=${value}`).join('; ');
+    
+    // --- Step 5: Fetch the actual data using the session cookie ---
     const dataResponse = await fetch(dataUrl, {
         headers: {
-            'Cookie': authCookie, // Use the new authentication cookie
             'User-Agent': userAgent,
+            'Cookie': finalCookieString,
         },
         cache: 'no-store',
     });
 
     if (!dataResponse.ok) {
-        const errorBodyText = await dataResponse.text();
-        console.error(`Source 6 Data Fetch Error (Status: ${dataResponse.status}): ${errorBodyText}`);
-        return new Response(
-            JSON.stringify({
-                error: "Eroare la descărcarea datelor de la Sursa 6 (după autentificare).",
-                details: errorBodyText.trim() || `Furnizorul a răspuns cu status ${dataResponse.status}.`
-            }),
-            { status: 502, headers: { 'Content-Type': 'application/json' } }
-        );
+        throw new Error(`Eroare la descărcarea datelor (status: ${dataResponse.status})`);
     }
-
-    // --- Step 5: Stream the data back to the client ---
+    
+    // --- Step 6: Stream the data back to the client ---
     const responseHeaders = new Headers();
     responseHeaders.set('Content-Type', dataResponse.headers.get('Content-Type') || 'text/csv; charset=utf-8');
     responseHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
@@ -105,11 +120,11 @@ export default async function handler(req: Request): Promise<Response> {
     });
 
   } catch (error) {
-    console.error('Error in API proxy for Source 6 (2-step auth):', error);
-    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
+    console.error('Error in API proxy for Source 6:', error);
+    const errorMessage = error instanceof Error ? error.message : 'A apărut o eroare necunoscută.';
     return new Response(
       JSON.stringify({
-          error: "Eroare internă în proxy-ul serverului pentru Sursa 6.",
+          error: "Eroare la încărcarea Sursei 6.",
           details: errorMessage
       }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
