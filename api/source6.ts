@@ -5,8 +5,8 @@ export const config = {
 };
 
 export default async function handler(req: Request): Promise<Response> {
-  // The URL for source 6 is now hardcoded as provided by the user.
-  const targetUrl = 'https://statusfalgar.se/Excel/StockList';
+  // The URL for source 6 is updated to the new API endpoint provided by the user.
+  const targetUrl = 'https://statusfalgar.se/api/PriceList';
 
   try {
     const apiResponse = await fetch(targetUrl, {
