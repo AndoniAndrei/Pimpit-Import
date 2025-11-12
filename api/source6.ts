@@ -6,7 +6,7 @@ export const config = {
 
 /**
  * Handles authentication for Source 6, which uses a modern Next.js (NextAuth) flow.
- * This version correctly simulates the multi-step browser login process.
+ * This version correctly simulates the multi-step browser login process, including the Referer header.
  */
 export default async function handler(req: Request): Promise<Response> {
   const loginPageUrl = 'https://statusfalgar.se/loggain';
@@ -69,6 +69,7 @@ export default async function handler(req: Request): Promise<Response> {
             'Content-Type': 'application/x-www-form-urlencoded',
             'User-Agent': userAgent,
             'Cookie': initialCookies, // Send the same cookies we received from the login page
+            'Referer': loginPageUrl, // This header is crucial for passing security checks
         },
         body: loginPayload.toString(),
     });
@@ -90,7 +91,7 @@ export default async function handler(req: Request): Promise<Response> {
       // Create a unique set of cookies, preferring the last seen value for a given name.
       .reduce((acc: { [key: string]: string }, cookie: string) => {
           const [key, value] = cookie.split('=');
-          acc[key] = value;
+          if (key) acc[key] = value;
           return acc;
        }, {});
     
