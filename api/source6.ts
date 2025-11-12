@@ -11,13 +11,29 @@ export default async function handler(req: Request): Promise<Response> {
   try {
     const apiResponse = await fetch(targetUrl, {
       headers: {
-        'User-Agent': 'Pimpit-B2B-Catalog-Proxy/1.0',
+        // Use a standard browser User-Agent to prevent the server from returning a webpage instead of the CSV.
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
       },
       cache: 'no-store',
     });
 
     if (!apiResponse.ok) {
       const errorBodyText = await apiResponse.text();
+      // Check if the body is HTML, which indicates the server blocked the request.
+      if (errorBodyText.trim().toLowerCase().startsWith('<!doctype html')) {
+          console.error(`Source 6 returned an HTML page instead of CSV. (Status: ${apiResponse.status})`);
+          return new Response(
+            JSON.stringify({
+              error: "Eroare la comunicarea cu Sursa 6.",
+              details: "Furnizorul a blocat cererea și a returnat o pagină web în loc de fișierul cu produse."
+            }),
+            {
+              status: 502,
+              headers: { 'Content-Type': 'application/json' }
+            }
+          );
+      }
+      
       console.error(`Source 6 API Error (Status: ${apiResponse.status}): ${errorBodyText}`);
       return new Response(
         JSON.stringify({
