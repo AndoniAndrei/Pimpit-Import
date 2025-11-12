@@ -4,14 +4,6 @@ export const config = {
   runtime: 'edge',
 };
 
-// Helper function to extract the value of the __RequestVerificationToken from HTML.
-const getVerificationToken = (html: string): string | null => {
-  // Use a more robust regex that is not sensitive to attribute order or the exact closing tag syntax.
-  const match = html.match(/<input[^>]+name="__RequestVerificationToken"[^>]+value="([^"]+)"/);
-  return match ? match[1] : null;
-};
-
-
 export default async function handler(req: Request): Promise<Response> {
   const loginUrl = 'https://statusfalgar.se/loggain';
   const dataUrl = 'https://statusfalgar.se/api/PriceList';
@@ -22,7 +14,9 @@ export default async function handler(req: Request): Promise<Response> {
   const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36';
 
   try {
-    // --- Step 1: Visit the login page to get the initial cookie and the anti-forgery token ---
+    // --- Step 1: Visit the login page to establish an initial session cookie ---
+    // This step is often necessary to get a session cookie that the server expects
+    // to see in the subsequent POST request.
     const initialPageResponse = await fetch(loginUrl, {
       headers: {
         'User-Agent': userAgent,
@@ -34,31 +28,29 @@ export default async function handler(req: Request): Promise<Response> {
     }
 
     const initialCookie = initialPageResponse.headers.get('set-cookie');
-    const loginPageHtml = await initialPageResponse.text();
-    const verificationToken = getVerificationToken(loginPageHtml);
-    
-    if (!initialCookie || !verificationToken) {
+
+    if (!initialCookie) {
        return new Response(
         JSON.stringify({
           error: "Autentificare eșuată pentru Sursa 6.",
-          details: "Nu s-a putut obține token-ul de securitate de pe pagina de login. Procesul de login s-a schimbat."
+          details: "Nu s-a putut stabili sesiunea inițială pe pagina de login."
         }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
     
-    // --- Step 2: Send the login POST request with the token and initial cookie ---
+    // --- Step 2: Send the login POST request with credentials and the initial cookie ---
     const loginBody = new URLSearchParams();
     loginBody.append('Username', username);
     loginBody.append('Password', password);
-    loginBody.append('__RequestVerificationToken', verificationToken);
+    // No anti-forgery token is sent in this simplified, direct approach.
 
     const loginResponse = await fetch(loginUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'User-Agent': userAgent,
-        'Cookie': initialCookie.split(';')[0], // Use only the relevant part of the cookie
+        'Cookie': initialCookie.split(';')[0], // Use the session cookie from step 1
       },
       body: loginBody.toString(),
       redirect: 'manual', // We need to capture the auth cookie from the redirect
@@ -67,7 +59,7 @@ export default async function handler(req: Request): Promise<Response> {
     // --- Step 3: Check for successful login and extract the auth cookie ---
     const setCookieHeader = loginResponse.headers.get('set-cookie');
 
-    // A successful login should result in a redirect (status 302) and a new cookie
+    // A successful login should result in a redirect (status 302) and a new, more powerful auth cookie.
     if (loginResponse.status !== 302 || !setCookieHeader) {
       console.error(`Source 6 Login Failed (Status: ${loginResponse.status})`);
        return new Response(
@@ -113,7 +105,7 @@ export default async function handler(req: Request): Promise<Response> {
     });
 
   } catch (error) {
-    console.error('Error in API proxy for Source 6 (3-step auth):', error);
+    console.error('Error in API proxy for Source 6 (2-step auth):', error);
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
     return new Response(
       JSON.stringify({
