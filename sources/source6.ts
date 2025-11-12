@@ -79,6 +79,7 @@ export const source6: DataSource = {
       'quantityavailable',
     ],
     delimiter: ';',
+    encoding: 'windows-1252',
   },
   map,
 };
