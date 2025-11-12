@@ -3,8 +3,15 @@ import { normalizeProductAttributes } from '../utils/productUtils';
 
 const map = async (data: Product[]): Promise<Product[]> => {
   const initialProducts = data
-    // Filter exclusively for ProductGroupId 220, using loose equality for robustness
-    .filter(p => p && String(p.ProductGroupId || '').trim() == '220' && p.ArticleId)
+    // Rule: Display products if ProductGroupId is 220 OR if they are "Dirt" wheels.
+    .filter(p => {
+        if (!p || !p.ArticleId) return false;
+        
+        const isCorrectGroup = String(p.ProductGroupId || '').trim() == '220';
+        const isDirtWheel = String(p['Article Text'] || '').toLowerCase().includes('dirt');
+        
+        return isCorrectGroup || isDirtWheel;
+    })
     .map(p => {
       // Price Calculation: (((((pret achizitie * 4)+1080)*1.21)*1.4)/4)*0.48
       const purchasePriceStr = String(p.Price || '0').replace(',', '.');
