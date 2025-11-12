@@ -92,6 +92,8 @@ export const source7: DataSource = {
         'Load rate',
         'wheel model name'
     ],
+    delimiter: ';',
+    encoding: 'windows-1252',
   },
   map,
 };
