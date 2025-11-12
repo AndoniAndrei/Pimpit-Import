@@ -2,17 +2,13 @@ import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
 
 const map = async (data: Product[]): Promise<Product[]> => {
-  // First, filter out any products that contain "dirt"
-  const cleanedData = data.filter(p => {
-    const description = String(p.Description || '').toLowerCase();
-    const brand = String(p.Brand || '').toLowerCase();
-    const model = String(p.Model || '').toLowerCase();
-    // If any of these fields contain 'dirt', the product is excluded.
-    return !description.includes('dirt') && !brand.includes('dirt') && !model.includes('dirt');
-  });
-
-  const initialProducts = cleanedData
+  const initialProducts = data
     .filter(p => p && p.Articlecode && String(p.Articlecode).trim() !== '')
+    .filter(p => {
+        // Rule: Exclude "dirt" products from this source ONLY.
+        const combinedSearchString = `${p.Brand || ''} ${p.Model || ''} ${p.Description || ''}`.toLowerCase();
+        return !combinedSearchString.includes('dirt');
+    })
     .map(p => {
       // Price Calculation: ((((pret de achizitie*4)*1.21)*1.4)*5)/4
       const purchasePriceStr = String(p['Nett-price'] || '0').replace(',', '.');
