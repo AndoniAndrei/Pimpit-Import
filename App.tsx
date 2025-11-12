@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect, useMemo, Suspense, lazy } from 'react';
-import { Product, Filters, AvailableOptions, FilterMode, DataSource } from './types';
+import { Product, Filters, AvailableOptions, FilterMode, DataSource, SourceError } from './types';
 import ProductCard from './components/ProductCard';
 import FilterControls from './components/FilterControls';
 import ActiveFilters from './components/ActiveFilters';
 import Spinner from './components/Spinner';
 import Pagination from './components/Pagination';
+import ErrorNotification from './components/ErrorNotification';
 import { allSources } from './sources';
 import { parseCSVData } from './utils/csvParser';
 import { parseXMLData } from './utils/xmlParser';
@@ -100,7 +101,7 @@ const App: React.FC = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadingMessage, setLoadingMessage] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
+  const [sourceErrors, setSourceErrors] = useState<SourceError[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [filterMode, setFilterMode] = useState<FilterMode>('standard');
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -125,19 +126,20 @@ const App: React.FC = () => {
   useEffect(() => {
     const fetchProducts = async () => {
       setLoading(true);
-      setError(null);
+      setSourceErrors([]);
       setProducts([]);
 
       if (allSources.length === 0) {
-        setError("Nicio sursă de date nu este configurată. Verificați directorul 'sources'.");
+        setSourceErrors([{ name: 'Configurație Aplicație', message: "Nicio sursă de date nu este configurată." }]);
         setLoading(false);
         return;
       }
+      
+      setLoadingMessage(`Se încarcă ${allSources.length} surse de date...`);
 
-      const errors: string[] = [];
-
-      const processSource = async (source: DataSource): Promise<Product[]> => {
-         try {
+      const results = await Promise.allSettled(
+        allSources.map(async (source) => {
+          try {
             const fetchOptions: RequestInit = { cache: 'no-store' };
             
             const res = source.fetcher 
@@ -177,32 +179,27 @@ const App: React.FC = () => {
           } catch (e) {
             console.error(`Error processing ${source.name}:`, e);
             const errorMessage = e instanceof Error ? e.message : 'Eroare necunoscută la procesare.';
-            errors.push(`${source.name}: ${errorMessage}`);
-            return [];
+            // Reject the promise with a structured error that allSettled will capture
+            return Promise.reject({ name: source.name, message: errorMessage });
           }
-      };
+        })
+      );
 
-      try {
-        setLoadingMessage(`Se încarcă ${allSources.length} surse de date...`);
-        
-        const productArrays = await Promise.all(
-          allSources.map(source => processSource(source))
-        );
-        
-        const allProducts = productArrays.flat();
-        setProducts(allProducts);
+      const allProducts: Product[] = [];
+      const errors: SourceError[] = [];
 
-        if (errors.length > 0) {
-            setError(errors.join(' '));
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          allProducts.push(...result.value);
+        } else {
+          errors.push(result.reason as SourceError);
         }
-
-      } catch (e) {
-        const errorMessage = e instanceof Error ? e.message : 'A apărut o eroare necunoscută.';
-        setError(`A apărut o eroare la încărcarea produselor: ${errorMessage}`);
-      } finally {
-        setLoading(false);
-        setLoadingMessage('');
-      }
+      });
+      
+      setProducts(allProducts);
+      setSourceErrors(errors);
+      setLoading(false);
+      setLoadingMessage('');
     };
     fetchProducts();
   }, []);
@@ -396,12 +393,13 @@ const App: React.FC = () => {
 
   return (
     <div className="container mx-auto p-4 md:p-8">
+      <ErrorNotification errors={sourceErrors} />
       <header className="text-center mb-8">
         <a href="/" onClick={handleLogoClick} aria-label="Pagina principală, resetează filtrele">
           <img src="https://pimpit.ro/wp-content/uploads/2024/08/logo-pimpit-ro.png" alt="Pimpit.ro Logo" className="mx-auto mb-4" style={{ maxWidth: '400px' }}/>
         </a>
         <p className="text-gray-500 mt-2">Catalog Furnizori Piese Auto</p>
-        {!loading && !error && products.length > 0 && (
+        {!loading && products.length > 0 && (
           <p className="text-lg text-gray-700 mt-4 font-light">
             <span className="font-semibold">{products.length.toLocaleString('ro-RO')}</span> Produse Unice în Catalog
           </p>
@@ -425,9 +423,7 @@ const App: React.FC = () => {
       />
 
       <main>
-        {loading ? <Spinner message={loadingMessage} /> : error ? (
-          <div className="text-center text-red-500 bg-red-100 p-4 rounded-lg"><p className="font-bold">A apărut o eroare</p><p>{error}</p></div>
-        ) : (
+        {loading ? <Spinner message={loadingMessage} /> : (
           <>
             <div className="text-left text-gray-600 mb-4">
                {products.length === 0 && !loading 

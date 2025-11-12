@@ -1,3 +1,4 @@
+
 export interface Product {
   [key: string]: any;
 }
@@ -49,4 +50,9 @@ export interface DataSource {
   parserConfig: ParserConfig;
   map: (data: any[]) => Promise<Product[]>; // Added custom fetcher for resilient sources
   fetcher?: () => Promise<Response>;
+}
+
+export interface SourceError {
+  name: string;
+  message: string;
 }
