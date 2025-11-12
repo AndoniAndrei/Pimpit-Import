@@ -5,9 +5,9 @@ export const config = {
 };
 
 // Helper function to extract the value of the __RequestVerificationToken from HTML.
-// This is a basic parser and might break if the HTML structure changes significantly.
 const getVerificationToken = (html: string): string | null => {
-  const match = html.match(/<input name="__RequestVerificationToken" type="hidden" value="([^"]+)" \/>/);
+  // Use a more robust regex that is not sensitive to attribute order or the exact closing tag syntax.
+  const match = html.match(/<input[^>]+name="__RequestVerificationToken"[^>]+value="([^"]+)"/);
   return match ? match[1] : null;
 };
 
