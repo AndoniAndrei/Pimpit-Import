@@ -4,7 +4,7 @@ import { normalizeProductAttributes } from '../utils/productUtils';
 const map = async (data: Product[]): Promise<Product[]> => {
   const initialProducts = data
     // Filter exclusively for ProductGroupId 220
-    .filter(p => p && p.ProductGroupId === '220' && p.ArticleId)
+    .filter(p => p && String(p.ProductGroupId || '').trim() === '220' && p.ArticleId)
     .map(p => {
       // Price Calculation: (((((pret achizitie * 4)+1080)*1.21)*1.4)/4)*0.48
       const purchasePriceStr = String(p.Price || '0').replace(',', '.');
