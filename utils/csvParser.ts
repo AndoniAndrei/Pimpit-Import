@@ -27,6 +27,10 @@ export const parseCSVData = (text: string, config: ParserConfig): Product[] => {
     if (config.delimiter) {
       papaConfig.delimiter = config.delimiter;
     }
+    // FIX: Pass quoteChar to PapaParse if it is defined in the config.
+    if (config.quoteChar) {
+      papaConfig.quoteChar = config.quoteChar;
+    }
 
     const parseResult = Papa.parse(text, papaConfig);
 
@@ -63,6 +67,10 @@ export const parseCSVData = (text: string, config: ParserConfig): Product[] => {
     };
     if (config.delimiter) {
       papaConfig.delimiter = config.delimiter;
+    }
+    // FIX: Pass quoteChar to PapaParse if it is defined in the config.
+    if (config.quoteChar) {
+      papaConfig.quoteChar = config.quoteChar;
     }
     const parseResult = Papa.parse(text, papaConfig);
 

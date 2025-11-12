@@ -25,19 +25,26 @@ const map = async (data: Product[]): Promise<Product[]> => {
       // 4. Image URL
       const imageUrl = p['Image'];
       
+      // 5. Manual cleanup for fields that might have been quoted, as quote parsing is disabled.
+      const cleanQuotedField = (fieldValue: any): string => {
+          if (typeof fieldValue !== 'string') return String(fieldValue || '');
+          // Trim whitespace, then remove leading/trailing quotes that might exist from the raw data.
+          return fieldValue.trim().replace(/^"|"$/g, '').replace(/""/g, '"');
+      };
+
       const product: Product = {
         PartNumber: p['Item Code'],
-        Brand: p['Brand'],
-        Model: p['wheel model name'],
-        PartDescription: p['Product Name'],
-        Finish: p['Colour/Finish'],
+        Brand: cleanQuotedField(p['Brand']),
+        Model: cleanQuotedField(p['wheel model name']),
+        PartDescription: cleanQuotedField(p['Product Name']),
+        Finish: cleanQuotedField(p['Colour/Finish']),
         Size: diameter,
         Width: width,
         PCD: p['PCD'],
         Offset: p['Offset'],
         CB: p['Center Bore'],
         Load: p['Load rate'],
-        Description: p['Description'],
+        Description: cleanQuotedField(p['Description']),
         Stock: stock,
         Price: calculatedPrice,
         ImageUrl: imageUrl,
@@ -92,8 +99,9 @@ export const source7: DataSource = {
         'Load rate',
         'wheel model name'
     ],
-    delimiter: ';',
+    delimiter: ',', // Corrected separator to comma
     encoding: 'windows-1252',
+    quoteChar: '\b', // Effectively disable quote parsing to handle malformed fields
   },
   map,
 };

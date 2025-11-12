@@ -41,6 +41,8 @@ export interface ParserConfig {
   columnMapping?: string[];
   delimiter?: string;
   encoding?: string;
+  // FIX: Add quoteChar to allow custom quote character configuration for PapaParse.
+  quoteChar?: string;
 }
 
 export interface DataSource {
