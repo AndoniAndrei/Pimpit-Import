@@ -41,9 +41,9 @@ export const parseCSVData = (text: string, config: ParserConfig): Product[] => {
   let dataRows: string[][];
 
   if (config.columnMapping) {
-    // Position-based mapping.
+    // Position-based mapping. Assumes the first row is a header and skips it.
     headers = config.columnMapping;
-    dataRows = table;
+    dataRows = table.slice(1);
   } else if (config.requiredHeaders && config.requiredHeaders.length > 0) {
     // Header-based mapping: find the header row first.
     let headerIndex = -1;
