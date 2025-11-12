@@ -1,88 +1,30 @@
-
 import { Product, ParserConfig } from '../types';
 
 // Let TypeScript know that Papa is available globally from the script tag in index.html
 declare var Papa: any;
 
 /**
- * Robustly parses CSV text into an array of product objects using the PapaParse library.
- * It supports two configuration modes:
- * 1. `requiredHeaders`: Uses PapaParse's header detection and validates that all required headers are present.
- * 2. `columnMapping`: Maps columns by their position, assuming the first row is a header to be skipped.
- * @param text The raw CSV string.
- * @param config The parser configuration.
- * @returns An array of product objects.
+ * Robustly parses CSV text into an array of product objects.
+ * This version is designed to be resilient to malformed CSV files, such as those with
+ * inconsistent column counts per row.
  */
 export const parseCSVData = (text: string, config: ParserConfig): Product[] => {
   if (text.charCodeAt(0) === 0xFEFF) {
     text = text.slice(1); // Remove BOM
   }
-
-  // --- Case 1: Header-based mapping (most common) ---
-  if (config.requiredHeaders && config.requiredHeaders.length > 0) {
-    const papaConfig: any = {
-      header: true, // Let PapaParse automatically detect the header row
-      skipEmptyLines: true,
-    };
-    if (config.delimiter) {
-      papaConfig.delimiter = config.delimiter;
-    }
-    // FIX: Pass quoteChar to PapaParse if it is defined in the config.
-    if (config.quoteChar) {
-      papaConfig.quoteChar = config.quoteChar;
-    }
-
-    const parseResult = Papa.parse(text, papaConfig);
-
-    if (parseResult.errors.length > 0) {
-      console.error('PapaParse Errors:', parseResult.errors);
-      throw new Error(`CSV Parsing Error: ${parseResult.errors[0].message}`);
-    }
-
-    // Validate that all required headers were found by PapaParse
-    const foundHeaders = (parseResult.meta.fields || []).map(h => String(h || '').trim().toLowerCase());
-    const missingHeaders = config.requiredHeaders.filter(
-      reqHeader => !foundHeaders.includes(reqHeader.toLowerCase())
-    );
-    
-    if (missingHeaders.length > 0) {
-      console.error(
-        "Could not find required CSV headers.",
-        { required: config.requiredHeaders, found: parseResult.meta.fields, missing: missingHeaders },
-        "First 10 lines of file:", text.split(/\r?\n|\r/).slice(0, 10).join('\n')
-      );
-      throw new Error(`Could not find the required CSV header. Please check the file structure.`);
-    }
-    
-    // PapaParse returns an array of objects directly. Filter out any completely empty rows.
-    return parseResult.data.filter((row: Product) => 
-        Object.values(row).some(val => val !== null && val !== undefined && String(val).trim() !== '')
-    );
-  }
-
-  // --- Case 2: Position-based mapping (for files without reliable headers) ---
+  
+  // --- Case 1: Position-based mapping (for files without reliable headers like Source 4) ---
   if (config.columnMapping) {
-    const papaConfig: any = {
-      skipEmptyLines: true,
-    };
-    if (config.delimiter) {
-      papaConfig.delimiter = config.delimiter;
-    }
-    // FIX: Pass quoteChar to PapaParse if it is defined in the config.
-    if (config.quoteChar) {
-      papaConfig.quoteChar = config.quoteChar;
-    }
+    const papaConfig: any = { skipEmptyLines: true };
+    if (config.delimiter) papaConfig.delimiter = config.delimiter;
+    
     const parseResult = Papa.parse(text, papaConfig);
-
     if (parseResult.errors.length > 0) {
-      console.error('PapaParse Errors:', parseResult.errors);
-      throw new Error(`CSV Parsing Error: ${parseResult.errors[0].message}`);
+      const fatalError = parseResult.errors.find((e: any) => e.code !== 'TooFewFields' && e.code !== 'TooManyFields');
+      if (fatalError) throw new Error(`CSV Parsing Error: ${fatalError.message}`);
     }
-
     const table: string[][] = parseResult.data;
-    if (table.length === 0) {
-        throw new Error("CSV parsing resulted in an empty table.");
-    }
+    if (table.length === 0) return [];
     
     const headers = config.columnMapping;
     const dataRows = table.slice(1); // Assumes first row is a header and skips it
@@ -98,7 +40,62 @@ export const parseCSVData = (text: string, config: ParserConfig): Product[] => {
         return product;
     }).filter((p): p is Product => p !== null);
   }
-  
-  // --- Fallback error ---
+
+  // --- Case 2: Robust Header-based mapping (for all other sources) ---
+  if (config.requiredHeaders && config.requiredHeaders.length > 0) {
+    const papaConfig: any = { skipEmptyLines: true };
+    if (config.delimiter) papaConfig.delimiter = config.delimiter;
+
+    // We parse without headers to get an array of arrays, which is easier to work with for inconsistent files.
+    const parseResult = Papa.parse(text, papaConfig);
+    
+    // We will tolerate field count mismatch errors, but log them.
+    if (parseResult.errors.length > 0) {
+      const fatalError = parseResult.errors.find((e: any) => e.code !== 'TooFewFields' && e.code !== 'TooManyFields');
+      if (fatalError) {
+        console.error('PapaParse Fatal Error:', fatalError);
+        throw new Error(`CSV Parsing Error: ${fatalError.message}`);
+      }
+      console.warn('PapaParse Recoverable Errors:', parseResult.errors);
+    }
+
+    const allRows: string[][] = parseResult.data;
+    if (allRows.length === 0) return [];
+
+    const requiredLower = config.requiredHeaders.map(h => h.toLowerCase());
+    let headerRowIndex = -1;
+    let originalHeaders: string[] = [];
+
+    // Find the header row by checking which row contains all required headers
+    for (let i = 0; i < allRows.length; i++) {
+      const potentialHeader = allRows[i].map(h => String(h || '').trim().toLowerCase());
+      if (requiredLower.every(req => potentialHeader.includes(req))) {
+        headerRowIndex = i;
+        originalHeaders = allRows[i].map(h => String(h || '').trim());
+        break;
+      }
+    }
+
+    if (headerRowIndex === -1) {
+      console.error("Robust Parser: Could not find required CSV headers.", { required: config.requiredHeaders, fileRows: allRows.slice(0, 10) });
+      throw new Error(`Could not find the required CSV header. Please check the file structure.`);
+    }
+
+    const dataRows = allRows.slice(headerRowIndex + 1);
+
+    return dataRows.map(row => {
+      if (row.every(cell => !cell || !String(cell).trim())) return null;
+
+      const product: Product = {};
+      originalHeaders.forEach((headerName, index) => {
+        // This gracefully handles rows that are shorter than the header row.
+        if (headerName && index < row.length) {
+          product[headerName] = row[index];
+        }
+      });
+      return product;
+    }).filter((p): p is Product => p !== null);
+  }
+
   throw new Error("CSV parser config must include either 'requiredHeaders' or 'columnMapping'.");
 };
