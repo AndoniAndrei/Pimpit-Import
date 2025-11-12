@@ -12,31 +12,13 @@ const map = async (data: Product[]): Promise<Product[]> => {
 
       const imageUrl = p['URL-to-photo'];
       const imageUrls = imageUrl ? [imageUrl] : [];
-      
-      let brand = p.Brand;
-      let model = p.Model;
-
-      // Data correction 1: If the brand field contains the model (e.g., "ABS F55") and the model field is empty,
-      // split them into the correct fields. This handles inconsistencies like ";;" in the source CSV.
-      if (typeof brand === 'string' && brand.toUpperCase().startsWith('ABS ') && !model) {
-        const brandParts = brand.split(' ');
-        if (brandParts.length > 1) {
-            model = brandParts.slice(1).join(' ').trim();
-            brand = 'ABS';
-        }
-      }
-
-      // Data correction 2: If brand is missing but model exists, assume brand is "ABS".
-      if (!brand && model) {
-          brand = 'ABS';
-      }
 
       const product: Product = {
         PartNumber: p.Articlecode,
-        Brand: brand, // Use corrected brand
-        Model: model, // Use corrected model
+        Brand: p.Brand,
+        Model: p.Model,
         PartDescription: p.Description,
-        Finish: p.Color,
+        Finish: p.Color, // Direct mapping from the 'Color' column
         Size: p.Inch,
         Width: p.Width,
         PCD: p.PCD,
@@ -81,9 +63,9 @@ export const source5: DataSource = {
   type: 'csv',
   fetcher,
   parserConfig: {
-    // Switched to header-based mapping with the correct headers provided by the user.
-    // Adding brand and model to ensure the data correction logic works reliably.
-    requiredHeaders: ['articlecode', 'brand', 'model', 'nett-price', 'stock'],
+    // Rely on headers to map columns. These are essential for mapping.
+    // We assume the file is now consistent and these headers are present.
+    requiredHeaders: ['articlecode', 'brand', 'model', 'color', 'nett-price', 'stock'],
   },
   map,
 };
