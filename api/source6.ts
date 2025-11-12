@@ -5,112 +5,40 @@ export const config = {
 };
 
 /**
- * Handles authentication for Source 6, which uses a modern Next.js (NextAuth) flow.
- * This version correctly simulates the multi-step browser login process, including the Referer header.
+ * Fetches data from Source 6 by directly using a hardcoded, valid session cookie.
+ * This approach bypasses the complex, multi-step authentication process that was failing,
+ * providing a stable and direct connection to the data endpoint.
  */
 export default async function handler(req: Request): Promise<Response> {
-  const loginPageUrl = 'https://statusfalgar.se/loggain';
-  const csrfApiUrl = 'https://statusfalgar.se/api/auth/csrf';
-  const loginApiUrl = 'https://statusfalgar.se/api/auth/callback/credentials';
   const dataUrl = 'https://statusfalgar.se/api/PriceList';
-  
-  const username = "office@pimpit.ro";
-  const password = "40785733102";
-  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36';
+  const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
+
+  // This long-lived session cookie was extracted from a successful browser login session.
+  // This is the key to bypassing the programmatic login flow.
+  const sessionCookie = `session=e59ab029c29c544d0f8c5ea70816948c; _gtmeec=e30%3D; _fbp=fb.1.1762440630195.1035609366; _ga=GA1.1.1695258228.1762440630; FPID=FPID2.2.j6zBRBzIA39pWHBifypoPNLs7%2F8r5Gg%2BD%2BFBkUpPXF0%3D.1762440630; FPLC=rEROYVhYrxBsgRMSdWxkthlMQnJfk4nXnztkXNDI1M96Qi5v6P%2B7bpO2bfwkdMu5jZqZ8zP5kk9FRn zSCejVg6jbgpL52C6OQNTwjr3YapRkpjGHEU5LYo1txVcMA%3D%3D.1762440630; _gcl_au=1.1.2027534866.1762440630; _ga_2N4C9E428V=GS2.1.s1762950358o4$g1$t1762951345$j60$l0$h979324443; .AspNet.ApplicationCookie=6cHek8rs-ZmJYQfcOKlzRFGfBq5hxlsjNCDnAPE0fBwYX4ANG75BLzHBjsCBcL4X6k9jO_mv8WFOjlcirq1PmbRLRLZ6nRYowarJfYsu-cRg9BavCumiCnDZaahV8A7gxao4NTydFLEeJvSjarW03DagzmO2q9I-4WQREo89w26Fiwf0EtqHDpjkhs9FeHimWTzXgWtmuZtzGTjCQjdopPgxxezSSdkYOSEYBz-eNeyrrCAOQ_e1kwvJaD-ZFpgn8hiLvOmkxHgSZ2l9EHP4LJU1-kAAfO0Tb6h59rLHoQp9vwiEdT-0t7kicJg0EOYL75-KI9ZWmczTKXPWV5y8CbtK2S3SU0KhwhU`;
 
   try {
-    // --- Step 1: Visit the login page to get the initial CSRF cookie ---
-    const pageResponse = await fetch(loginPageUrl, {
-      headers: { 'User-Agent': userAgent },
-    });
-
-    if (!pageResponse.ok) {
-      throw new Error(`Eroare la accesarea paginii de login (status: ${pageResponse.status})`);
-    }
-    
-    // In Vercel Edge, getSetCookie() is available.
-    const initialCookiesArray = (pageResponse.headers as any).getSetCookie();
-    if (!initialCookiesArray || initialCookiesArray.length === 0) {
-        throw new Error("Nu s-a putut obține cookie-ul inițial de pe pagina de login.");
-    }
-
-    const initialCookies = initialCookiesArray.map((c: string) => c.split(';')[0]).join('; ');
-
-    // --- Step 2: Get the CSRF token value from the dedicated API, using the initial cookie ---
-    const csrfResponse = await fetch(csrfApiUrl, {
-      headers: { 
-          'User-Agent': userAgent,
-          'Cookie': initialCookies,
-      },
-    });
-
-    if (!csrfResponse.ok) {
-       throw new Error(`Eroare la obținerea token-ului CSRF (status: ${csrfResponse.status})`);
-    }
-    
-    const csrfJson = await csrfResponse.json();
-    const csrfToken = csrfJson.csrfToken;
-    
-    if (!csrfToken) {
-      throw new Error("Răspunsul de la API-ul CSRF este invalid. Nu s-a putut obține token-ul.");
-    }
-    
-    // --- Step 3: Send the login request to the API with credentials and CSRF info ---
-    const loginPayload = new URLSearchParams({
-        username: username,
-        password: password,
-        csrfToken: csrfToken,
-        json: 'true',
-    });
-
-    const loginResponse = await fetch(loginApiUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': userAgent,
-            'Cookie': initialCookies, // Send the same cookies we received from the login page
-            'Referer': loginPageUrl, // This header is crucial for passing security checks
-        },
-        body: loginPayload.toString(),
-    });
-
-    if (!loginResponse.ok) {
-       const errorBodyText = await loginResponse.text();
-       throw new Error(`API-ul de login a eșuat (status: ${loginResponse.status}). Răspuns: ${errorBodyText}`);
-    }
-
-    // --- Step 4: Extract the final session cookie(s) ---
-    const finalCookiesArray = (loginResponse.headers as any).getSetCookie();
-    if (!finalCookiesArray || finalCookiesArray.length === 0) {
-        throw new Error('Autentificare reușită, dar nu s-a primit niciun cookie de sesiune.');
-    }
-    
-    // Combine all cookies (initial CSRF + new session cookie) for the final request
-    const combinedCookies = [...initialCookiesArray, ...finalCookiesArray]
-      .map((c: string) => c.split(';')[0])
-      // Create a unique set of cookies, preferring the last seen value for a given name.
-      .reduce((acc: { [key: string]: string }, cookie: string) => {
-          const [key, value] = cookie.split('=');
-          if (key) acc[key] = value;
-          return acc;
-       }, {});
-    
-    const finalCookieString = Object.entries(combinedCookies).map(([key, value]) => `${key}=${value}`).join('; ');
-    
-    // --- Step 5: Fetch the actual data using the session cookie ---
     const dataResponse = await fetch(dataUrl, {
         headers: {
             'User-Agent': userAgent,
-            'Cookie': finalCookieString,
+            'Cookie': sessionCookie,
         },
         cache: 'no-store',
     });
 
     if (!dataResponse.ok) {
-        throw new Error(`Eroare la descărcarea datelor (status: ${dataResponse.status})`);
+        // If the cookie expires, this is where it will fail.
+        const errorText = await dataResponse.text();
+        let details = `Eroare la descărcarea datelor (status: ${dataResponse.status}).`;
+        if (dataResponse.status === 401 || dataResponse.status === 403) {
+            details = "Autorizare eșuată. Cookie-ul de sesiune a expirat sau este invalid.";
+        } else {
+            details += ` Răspuns: ${errorText.substring(0, 200)}`;
+        }
+        throw new Error(details);
     }
     
-    // --- Step 6: Stream the data back to the client ---
+    // Stream the data back to the client
     const responseHeaders = new Headers();
     responseHeaders.set('Content-Type', dataResponse.headers.get('Content-Type') || 'text/csv; charset=utf-8');
     responseHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
