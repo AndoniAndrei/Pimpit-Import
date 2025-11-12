@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Product } from '../types';
 
@@ -118,6 +117,9 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onProductClick }) =>
         <div className="text-sm text-gray-600 flex-grow">
           <p>Stoc Depozit: <strong className={hasStock ? "text-green-600" : "text-red-600"}>{stock} buc.</strong></p>
           {onTheWater > 0 && <p>Stoc "On the water": <strong className="text-blue-600">{onTheWater} buc.</strong></p>}
+          {!hasStock && product.Source === 'Sursa 3' && product.next_delivery && (
+            <p className="text-purple-600 text-xs mt-1">Livrare: <strong className="font-semibold">{product.next_delivery}</strong></p>
+          )}
         </div>
 
         <div className="mt-4 pt-4 border-t border-gray-200 text-right">
