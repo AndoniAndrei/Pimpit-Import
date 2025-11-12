@@ -6,7 +6,7 @@ declare var Papa: any;
 /**
  * Robustly parses CSV text into an array of product objects.
  * This version is designed to be resilient to malformed CSV files, such as those with
- * inconsistent column counts per row.
+ * inconsistent column counts per row or minor header name variations.
  */
 export const parseCSVData = (text: string, config: ParserConfig): Product[] => {
   if (text.charCodeAt(0) === 0xFEFF) {
@@ -66,15 +66,23 @@ export const parseCSVData = (text: string, config: ParserConfig): Product[] => {
     let headerRowIndex = -1;
     let originalHeaders: string[] = [];
 
-    // Find the header row by checking which row contains all required headers
+    // Find the header row by checking which row is the best match for the required headers.
     for (let i = 0; i < allRows.length; i++) {
       const potentialHeader = allRows[i].map(h => String(h || '').trim().toLowerCase());
-      if (requiredLower.every(req => potentialHeader.includes(req))) {
+      const matchCount = requiredLower.filter(req => potentialHeader.includes(req)).length;
+      
+      // We need a high degree of confidence. Let's require at least 80% of headers to match.
+      // This provides resilience against minor column name changes or a few missing columns.
+      const threshold = Math.ceil(requiredLower.length * 0.8);
+
+      if (requiredLower.length > 0 && matchCount >= threshold) {
         headerRowIndex = i;
-        originalHeaders = allRows[i].map(h => String(h || '').trim());
+        // Use the actual headers from the file for mapping
+        originalHeaders = allRows[i].map(h => String(h || '').trim()); 
         break;
       }
     }
+
 
     if (headerRowIndex === -1) {
       console.error("Robust Parser: Could not find required CSV headers.", { required: config.requiredHeaders, fileRows: allRows.slice(0, 10) });
