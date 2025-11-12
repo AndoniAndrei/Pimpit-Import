@@ -30,7 +30,7 @@ export default async function handler(req: Request): Promise<Response> {
            return new Response(
             JSON.stringify({
               error: "Autorizare eșuată pentru Sursa 6.",
-              details: "User-ul sau parola furnizate (definite în cod) sunt incorecte."
+              details: "Autentificarea a eșuat. Acest lucru se poate datora unor credențiale incorecte sau faptului că serverul furnizorului necesită o metodă de autentificare mai complexă (ex: cookie de sesiune), care nu este compatibilă cu accesul direct la API. Vă rugăm să verificați credențialele și, dacă problema persistă, să contactați furnizorul pentru a confirma metoda corectă de autentificare pentru scripturi."
             }),
             {
               status: 401,
