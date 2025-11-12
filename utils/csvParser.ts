@@ -1,82 +1,52 @@
 
 import { Product, ParserConfig } from '../types';
 
-// Helper function to detect the delimiter (comma vs. semicolon)
-const getDelimiter = (line: string): string => {
-  const commaCount = (line.match(/,/g) || []).length;
-  const semicolonCount = (line.match(/;/g) || []).length;
-  return (semicolonCount > commaCount && semicolonCount > 0) ? ';' : ',';
-};
+// Let TypeScript know that Papa is available globally from the script tag in index.html
+declare var Papa: any;
 
-// Full CSV parser that handles multi-line rows, quotes, and delimiters
-const parseFullCsv = (text: string): string[][] => {
-    const table: string[][] = [];
-    if (!text) return table;
-    const delimiter = getDelimiter(text.substring(0, 1000));
-    let currentRow: string[] = [];
-    let currentVal = '';
-    let inQuotes = false;
-    for (let i = 0; i < text.length; i++) {
-        const char = text[i];
-        if (inQuotes) {
-            if (char === '"') {
-                if (i + 1 < text.length && text[i + 1] === '"') {
-                    currentVal += '"';
-                    i++;
-                } else {
-                    inQuotes = false;
-                }
-            } else {
-                currentVal += char;
-            }
-        } else {
-            if (char === '"') {
-                inQuotes = true;
-            } else if (char === delimiter) {
-                currentRow.push(currentVal.trim());
-                currentVal = '';
-            } else if (char === '\r' || char === '\n') {
-                if(currentVal || currentRow.length > 0) {
-                    currentRow.push(currentVal.trim());
-                    table.push(currentRow);
-                    currentRow = [];
-                    currentVal = '';
-                }
-                if (char === '\r' && i + 1 < text.length && text[i + 1] === '\n') {
-                    i++;
-                }
-            } else {
-                currentVal += char;
-            }
-        }
-    }
-    if(currentVal || currentRow.length > 0) {
-        currentRow.push(currentVal.trim());
-        table.push(currentRow);
-    }
-    return table.filter(row => row.length > 1 || (row.length === 1 && row[0] !== ''));
-};
-
-
-// Robust function to parse CSV text into an array of objects
+/**
+ * Robustly parses CSV text into an array of product objects using the PapaParse library.
+ * It supports two configuration modes:
+ * 1. `requiredHeaders`: Searches the CSV for a header row containing these headers and maps subsequent rows.
+ * 2. `columnMapping`: Maps columns by their position using the provided array of names, assuming no header row.
+ * @param text The raw CSV string.
+ * @param config The parser configuration.
+ * @returns An array of product objects.
+ */
 export const parseCSVData = (text: string, config: ParserConfig): Product[] => {
-  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-  const table = parseFullCsv(text);
-  if (table.length === 0) throw new Error("CSV parsing resulted in an empty table.");
+  if (text.charCodeAt(0) === 0xFEFF) {
+    text = text.slice(1); // Remove BOM
+  }
+
+  const parseResult = Papa.parse(text, {
+    skipEmptyLines: true,
+  });
+
+  if (parseResult.errors.length > 0) {
+    console.error('PapaParse Errors:', parseResult.errors);
+    throw new Error(`CSV Parsing Error: ${parseResult.errors[0].message}`);
+  }
+
+  const table: string[][] = parseResult.data;
+  if (table.length === 0) {
+    throw new Error("CSV parsing resulted in an empty table.");
+  }
 
   let headers: string[] = [];
   let dataRows: string[][];
 
   if (config.columnMapping) {
-    // Position-based mapping. Assume no header row or ignore it.
+    // Position-based mapping.
     headers = config.columnMapping;
     dataRows = table;
   } else if (config.requiredHeaders && config.requiredHeaders.length > 0) {
-    // Header-based mapping
+    // Header-based mapping: find the header row first.
     let headerIndex = -1;
-    for (let i = 0; i < table.length; i++) {
-        const potentialHeaders = table[i].map(h => h ? h.trim() : '');
+    // Search only first 10 rows for performance and to avoid false positives in data.
+    for (let i = 0; i < Math.min(table.length, 10); i++) {
+        const potentialHeaders = table[i].map(h => h ? String(h).trim() : '');
         const lowercasedHeaders = potentialHeaders.map(h => h.toLowerCase());
+        
         if (config.requiredHeaders.every(reqHeader => lowercasedHeaders.includes(reqHeader))) {
             headerIndex = i;
             headers = potentialHeaders;
@@ -93,9 +63,8 @@ export const parseCSVData = (text: string, config: ParserConfig): Product[] => {
       throw new Error("CSV parser config must include either 'requiredHeaders' or 'columnMapping'.");
   }
 
-
   return dataRows.map(row => {
-    if (row.every(cell => !cell || !cell.trim())) return null;
+    if (row.every(cell => !cell || !String(cell).trim())) return null;
     const product: Product = {};
     headers.forEach((header, index) => {
         if (header && index < row.length) {
