@@ -5,21 +5,41 @@ export const config = {
 };
 
 export default async function handler(req: Request): Promise<Response> {
-  // The URL for source 6 is updated to the new API endpoint provided by the user.
   const targetUrl = 'https://statusfalgar.se/api/PriceList';
+  // Hardcoded credentials as requested by the user.
+  const username = "office@pimpit.ro";
+  const password = "40785733102";
+
+  // Prepare Basic Authentication header
+  const credentials = btoa(`${username}:${password}`);
+  const requestHeaders = new Headers();
+  requestHeaders.set('Authorization', `Basic ${credentials}`);
+  requestHeaders.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
   try {
     const apiResponse = await fetch(targetUrl, {
-      headers: {
-        // Use a standard browser User-Agent to prevent the server from returning a webpage instead of the CSV.
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-      },
+      headers: requestHeaders,
       cache: 'no-store',
     });
 
     if (!apiResponse.ok) {
       const errorBodyText = await apiResponse.text();
-      // Check if the body is HTML, which indicates the server blocked the request.
+      // Check for specific authorization error text from the API response
+      if (apiResponse.status === 401 || errorBodyText.includes('Authorization has been denied')) {
+          console.error(`Source 6 Authorization Failed (Status: ${apiResponse.status}): ${errorBodyText}`);
+           return new Response(
+            JSON.stringify({
+              error: "Autorizare eșuată pentru Sursa 6.",
+              details: "User-ul sau parola furnizate (definite în cod) sunt incorecte."
+            }),
+            {
+              status: 401,
+              headers: { 'Content-Type': 'application/json' }
+            }
+          );
+      }
+      
+      // Check if the body is HTML, which indicates the server blocked the request for other reasons.
       if (errorBodyText.trim().toLowerCase().startsWith('<!doctype html')) {
           console.error(`Source 6 returned an HTML page instead of CSV. (Status: ${apiResponse.status})`);
           return new Response(
@@ -47,12 +67,12 @@ export default async function handler(req: Request): Promise<Response> {
       );
     }
 
-    const headers = new Headers();
-    headers.set('Content-Type', apiResponse.headers.get('Content-Type') || 'text/csv; charset=utf-8');
-    headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    const responseHeaders = new Headers();
+    responseHeaders.set('Content-Type', apiResponse.headers.get('Content-Type') || 'text/csv; charset=utf-8');
+    responseHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
 
     return new Response(apiResponse.body, {
-      headers: headers,
+      headers: responseHeaders,
       status: 200,
     });
 
