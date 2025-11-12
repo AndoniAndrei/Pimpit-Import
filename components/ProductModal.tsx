@@ -85,6 +85,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {
       { key: 'Load', label: 'Load' },
       { key: 'Weight', label: 'Weight' },
       { key: 'Model', label: 'Model' },
+      { key: 'IsWinterApproved', label: 'Compatibil Iarnă' },
       { key: 'TuvUrl', label: 'TUV' },
     ];
 

@@ -67,6 +67,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onProductClick }) =>
   const stock = product['Stock'] || 0;
   const onTheWater = product['OnTheWaterStock'] || 0;
   const hasStock = stock > 0;
+  const isWinterApproved = product.IsWinterApproved && String(product.IsWinterApproved).toLowerCase() === 'yes';
 
   return (
     <button
@@ -82,7 +83,10 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onProductClick }) =>
           loading="lazy"
           onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }}
         />
-        <div className="absolute top-2 right-2">
+        <div className="absolute top-2 right-2 flex items-center gap-2">
+            {isWinterApproved && (
+                <span className="text-xs font-bold text-blue-800 bg-blue-200 px-2 py-1 rounded-full shadow" title="Potrivit pentru iarnă">❄️ Iarnă</span>
+            )}
             {hasStock ? (
                 <span className="text-xs font-bold text-green-800 bg-green-200 px-2 py-1 rounded-full shadow">În Stoc</span>
             ) : onTheWater > 0 ? (
