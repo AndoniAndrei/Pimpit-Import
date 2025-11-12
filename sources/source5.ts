@@ -12,11 +12,30 @@ const map = async (data: Product[]): Promise<Product[]> => {
 
       const imageUrl = p['URL-to-photo'];
       const imageUrls = imageUrl ? [imageUrl] : [];
+      
+      let brand = p.Brand;
+      let model = p.Model;
+      const description = String(p.Description || '').trim();
+
+      // If Brand or Model is missing, try to extract them from the Description.
+      // This rule only applies to rows with incomplete data.
+      if ((!brand || !model) && description) {
+          const descriptionParts = description.split(/\s+/);
+          if (descriptionParts.length >= 2) {
+              // Only fill in the missing piece of information.
+              if (!brand) {
+                  brand = descriptionParts[0];
+              }
+              if (!model) {
+                  model = descriptionParts[1];
+              }
+          }
+      }
 
       const product: Product = {
         PartNumber: p.Articlecode,
-        Brand: p.Brand,
-        Model: p.Model,
+        Brand: brand,
+        Model: model,
         PartDescription: p.Description,
         Finish: p.Color, // Direct mapping from the 'Color' column
         Size: p.Inch,
