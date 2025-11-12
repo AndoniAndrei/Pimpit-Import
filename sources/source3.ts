@@ -1,4 +1,3 @@
-
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
 
@@ -123,6 +122,7 @@ export const source3: DataSource = {
   parserConfig: {
     // Define the headers required for the CSV parser to identify the data correctly.
     requiredHeaders: ['part_number', 'brand', 'your_net_price'],
+    delimiter: ';',
   },
   map,
 };

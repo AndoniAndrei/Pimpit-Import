@@ -1,4 +1,3 @@
-
 import { Product, ParserConfig } from '../types';
 
 // Let TypeScript know that Papa is available globally from the script tag in index.html
@@ -18,9 +17,15 @@ export const parseCSVData = (text: string, config: ParserConfig): Product[] => {
     text = text.slice(1); // Remove BOM
   }
 
-  const parseResult = Papa.parse(text, {
+  const papaConfig: any = {
     skipEmptyLines: true,
-  });
+  };
+
+  if (config.delimiter) {
+    papaConfig.delimiter = config.delimiter;
+  }
+
+  const parseResult = Papa.parse(text, papaConfig);
 
   if (parseResult.errors.length > 0) {
     console.error('PapaParse Errors:', parseResult.errors);

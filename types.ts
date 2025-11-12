@@ -1,4 +1,3 @@
-
 export interface Product {
   [key: string]: any;
 }
@@ -39,6 +38,7 @@ export interface AvailableOptions {
 export interface ParserConfig {
   requiredHeaders?: string[];
   columnMapping?: string[];
+  delimiter?: string;
 }
 
 export interface DataSource {

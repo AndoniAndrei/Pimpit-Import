@@ -66,6 +66,7 @@ export const source5: DataSource = {
     // Rely on headers to map columns. These are essential for mapping.
     // We assume the file is now consistent and these headers are present.
     requiredHeaders: ['articlecode', 'brand', 'model', 'color', 'nett-price', 'stock'],
+    delimiter: ';',
   },
   map,
 };
