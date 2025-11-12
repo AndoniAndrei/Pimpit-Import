@@ -39,6 +39,7 @@ export interface ParserConfig {
   requiredHeaders?: string[];
   columnMapping?: string[];
   delimiter?: string;
+  encoding?: string;
 }
 
 export interface DataSource {

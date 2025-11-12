@@ -67,6 +67,7 @@ export const source5: DataSource = {
     // We assume the file is now consistent and these headers are present.
     requiredHeaders: ['articlecode', 'brand', 'model', 'color', 'nett-price', 'stock'],
     delimiter: ';',
+    encoding: 'windows-1252',
   },
   map,
 };

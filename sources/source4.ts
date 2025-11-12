@@ -130,6 +130,7 @@ export const source4: DataSource = {
   fetcher,
   parserConfig: {
     columnMapping: columnMapping,
+    encoding: 'windows-1252',
   },
   map,
 };

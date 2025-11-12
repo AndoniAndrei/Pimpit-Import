@@ -147,13 +147,22 @@ const App: React.FC = () => {
             if (!res.ok) {
               throw new Error(`nu a putut fi încărcată (status: ${res.status}).`);
             }
+            
+            const isXml = source.type === 'xml';
+            let text: string;
 
-            const text = await res.text();
+            if (!isXml && source.parserConfig.encoding) {
+                const buffer = await res.arrayBuffer();
+                const decoder = new TextDecoder(source.parserConfig.encoding);
+                text = decoder.decode(buffer);
+            } else {
+                text = await res.text();
+            }
+
             if (!text.trim()) {
               throw new Error('este un fișier gol.');
             }
             
-            const isXml = source.type === 'xml';
             const parsedData = isXml
                 ? parseXMLData(text)
                 : parseCSVData(text, source.parserConfig);
