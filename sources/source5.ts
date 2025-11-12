@@ -2,7 +2,16 @@ import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
 
 const map = async (data: Product[]): Promise<Product[]> => {
-  const initialProducts = data
+  // First, filter out any products that contain "dirt"
+  const cleanedData = data.filter(p => {
+    const description = String(p.Description || '').toLowerCase();
+    const brand = String(p.Brand || '').toLowerCase();
+    const model = String(p.Model || '').toLowerCase();
+    // If any of these fields contain 'dirt', the product is excluded.
+    return !description.includes('dirt') && !brand.includes('dirt') && !model.includes('dirt');
+  });
+
+  const initialProducts = cleanedData
     .filter(p => p && p.Articlecode && String(p.Articlecode).trim() !== '')
     .map(p => {
       // Price Calculation: ((((pret de achizitie*4)*1.21)*1.4)*5)/4
@@ -13,16 +22,37 @@ const map = async (data: Product[]): Promise<Product[]> => {
       const imageUrl = p['URL-to-photo'];
       const imageUrls = imageUrl ? [imageUrl] : [];
       
-      let brand = p.Brand;
-      let model = p.Model;
+      let brand = String(p.Brand || '').trim();
+      let model = String(p.Model || '').trim();
       const description = String(p.Description || '').trim();
 
-      // If Brand or Model is missing, try to extract them from the Description.
-      // This rule only applies to rows with incomplete data.
-      if ((!brand || !model) && description) {
+      // --- Data Cleaning and Correction Logic ---
+      const combinedSearchString = `${brand} ${model} ${description}`.toLowerCase();
+      
+      // Rule 1: Correct 'STW' products
+      if (combinedSearchString.includes('stw')) {
+        brand = 'ABS';
+        model = 'STW 287';
+      }
+      // Rule 2: Correct products mistakenly branded as '355'
+      else if (brand === '355') {
+        brand = 'ABS';
+        model = '355';
+      }
+      // Rule 3: Correct products mistakenly branded as 'AERO'
+      else if (brand.toLowerCase() === 'aero') {
+        brand = 'ABS';
+        model = 'AERO';
+      }
+      // Rule 4: Correct the specific 'ABS F55' error, making them 'F88'
+      else if (brand === 'ABS F55') {
+        brand = 'ABS';
+        model = 'F88';
+      }
+      // Rule 5 (Fallback): If data is still missing, try to extract from description
+      else if ((!brand || !model) && description) {
           const descriptionParts = description.split(/\s+/);
           if (descriptionParts.length >= 2) {
-              // Only fill in the missing piece of information.
               if (!brand) {
                   brand = descriptionParts[0];
               }
