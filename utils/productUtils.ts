@@ -1,3 +1,4 @@
+
 import { Product } from '../types';
 
 const keysToNormalize: (keyof Product)[] = ['Size', 'Width', 'Offset', 'CB', 'Load', 'Weight'];

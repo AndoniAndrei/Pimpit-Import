@@ -1,3 +1,4 @@
+
 import { Product, ParserConfig } from '../types';
 
 // Let TypeScript know that Papa is available globally from the script tag in index.html
