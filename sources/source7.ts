@@ -44,7 +44,6 @@ const map = async (data: Product[]): Promise<Product[]> => {
         Offset: p['Offset'],
         CB: p['Center Bore'],
         Load: p['Load rate'],
-        Description: cleanQuotedField(p['Description']),
         Stock: stock,
         Price: calculatedPrice,
         ImageUrl: imageUrl,
