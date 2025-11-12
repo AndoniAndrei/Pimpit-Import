@@ -46,7 +46,7 @@ const map = async (data: Product[]): Promise<Product[]> => {
 };
 
 const fetcher = async (): Promise<Response> => {
-    const proxyUrl = '/api/alcar'; // The new proxy endpoint
+    const proxyUrl = '/api/source6'; // The correct proxy endpoint
     try {
         const response = await fetch(proxyUrl, { cache: 'no-store' });
         if (!response.ok) {
