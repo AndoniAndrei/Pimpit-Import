@@ -3,7 +3,7 @@ import { source2 } from './source2';
 import { source3 } from './source3';
 import { source4 } from './source4';
 import { source5 } from './source5';
-// import { source6 } from './source6';
+import { source6 } from './source6';
 import { source7 } from './source7';
 import { DataSource } from '../types';
 
@@ -17,7 +17,7 @@ const sources: (DataSource | undefined)[] = [
     source3,
     source4,
     source5,
-    // source6,
+    source6,
     source7,
 ];
 

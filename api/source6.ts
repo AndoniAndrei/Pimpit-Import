@@ -4,90 +4,46 @@ export const config = {
   runtime: 'edge',
 };
 
-// --- Target URLs ---
-const BASE_URL = 'https://statusfalgar.se';
-const LOGIN_PAGE_URL = `${BASE_URL}/loggain`;
-const CSRF_API_URL = `${BASE_URL}/api/auth/csrf`;
-const CREDENTIALS_API_URL = `${BASE_URL}/api/auth/callback/credentials`;
-const DATA_URL = `${BASE_URL}/api/PriceList`;
-
-// --- Credentials ---
-const USERNAME = 'office@pimpit.ro';
-const PASSWORD = '40785733102';
-const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
-
+// --- Target URL ---
+const DATA_URL = 'https://statusfalgar.se/api/PriceList';
+const USER_AGENT = 'Pimpit-B2B-Catalog-Proxy/1.1';
 
 /**
- * Implements a robust, multi-step authentication process to fetch data from Source 6.
- * This process mimics a real browser login on a modern Next.js/NextAuth application.
+ * Fetches data from Source 6 using a secure API key.
+ * This replaces the previous multi-step credential-based login process.
  */
 export default async function handler(req: Request): Promise<Response> {
+  const apiKey = process.env.SOURCE6_API_KEY;
+
+  if (!apiKey) {
+    console.error("SOURCE6_API_KEY is not configured on the server.");
+    return new Response(
+      JSON.stringify({ 
+          error: "Cheia API pentru Sursa 6 nu este configurată pe server.",
+          details: "Variabila de mediu SOURCE6_API_KEY lipsește."
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
   try {
-    // --- STEP 1: Get the CSRF token and initial cookies ---
-    // We need to fetch the CSRF token from a dedicated API endpoint.
-    // This also provides us with the necessary CSRF cookie.
-    const csrfResponse = await fetch(CSRF_API_URL, {
-      headers: { 'User-Agent': USER_AGENT },
-      cache: 'no-store',
-    });
-
-    if (!csrfResponse.ok) {
-        throw new Error(`Nu s-a putut obține token-ul de securitate (CSRF). Status: ${csrfResponse.status}`);
-    }
-
-    const { csrfToken } = await csrfResponse.json();
-    const csrfCookies = csrfResponse.headers.get('Set-Cookie');
-
-    if (!csrfToken || !csrfCookies) {
-        throw new Error("Token-ul de securitate (CSRF) sau cookie-urile inițiale nu au fost primite.");
-    }
-    
-    // --- STEP 2: Perform the login via API callback ---
-    // We POST the credentials along with the CSRF token to the credentials API.
-    const form = new URLSearchParams();
-    form.append('email', USERNAME);
-    form.append('password', PASSWORD);
-    form.append('csrfToken', csrfToken);
-    form.append('json', 'true'); // Required by NextAuth for API responses
-
-    const loginResponse = await fetch(CREDENTIALS_API_URL, {
-        method: 'POST',
-        headers: {
-            'User-Agent': USER_AGENT,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Cookie': csrfCookies,
-            'Referer': LOGIN_PAGE_URL,
-        },
-        body: form.toString(),
-        cache: 'no-store',
-    });
-
-    if (!loginResponse.ok) {
-        throw new Error(`Autentificarea la API a eșuat. Status: ${loginResponse.status}. Verificați credențialele.`);
-    }
-
-    // --- STEP 3: Extract the session cookie ---
-    // A successful login returns the session token in the Set-Cookie header.
-    const sessionCookie = loginResponse.headers.get('Set-Cookie');
-    if (!sessionCookie) {
-        throw new Error("Autentificare reușită, dar nu s-a primit cookie-ul de sesiune.");
-    }
-
-    // --- STEP 4: Fetch the actual data using the session cookie ---
+    // Fetch the actual data using the API key for authorization.
     const dataResponse = await fetch(DATA_URL, {
         headers: {
             'User-Agent': USER_AGENT,
-            'Cookie': sessionCookie, // Use the final session cookie
-            'Referer': BASE_URL,
+            // Standard method for API key authorization.
+            'Authorization': `Bearer ${apiKey}`,
         },
         cache: 'no-store',
     });
 
     if (!dataResponse.ok) {
-        throw new Error(`Autorizare eșuată la accesarea datelor. Status: ${dataResponse.status}. Cookie-ul de sesiune ar putea fi invalid.`);
+        const errorBodyText = await dataResponse.text();
+        console.error(`Source 6 API Error (Status: ${dataResponse.status}): ${errorBodyText}`);
+        throw new Error(`Autorizare eșuată la accesarea datelor (Status: ${dataResponse.status}). Verificați validitatea cheii API.`);
     }
 
-    // --- STEP 5: Stream the data back to the client ---
+    // Stream the data back to the client.
     const responseHeaders = new Headers();
     responseHeaders.set('Content-Type', dataResponse.headers.get('Content-Type') || 'text/csv; charset=utf-8');
     responseHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
