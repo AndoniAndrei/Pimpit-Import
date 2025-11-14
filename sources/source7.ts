@@ -4,7 +4,7 @@ import { normalizeProductAttributes } from '../utils/productUtils';
 
 const map = async (data: Product[]): Promise<Product[]> => {
   const initialProducts = data
-    .filter(p => p && p['SKU'] && String(p['SKU']).trim() !== '')
+    .filter(p => p && p['Item Code'] && String(p['Item Code']).trim() !== '')
     .map(p => {
       // 1. Price Calculation
       const rrpStr = String(p['RRP'] || '0').replace(',', '.');
@@ -12,30 +12,31 @@ const map = async (data: Product[]): Promise<Product[]> => {
       // Formula: (((((rrp-(0.2*rrp)*4)+100)*1.21)*1.4)*5.78)/4
       const calculatedPrice = Math.round((((((rrp - (0.2 * rrp)) * 4) + 100) * 1.21) * 1.4) * 5.78 / 4);
 
-      // 2. Size splitting
+      // 2. Size splitting (e.g., "19x8.5")
       const sizeStr = String(p['Size'] || '').trim();
       const sizeParts = sizeStr.toLowerCase().split('x');
       const diameter = sizeParts[0] || undefined;
       const width = sizeParts[1] || undefined;
 
-      // 3. Stock calculation - simplified to use a single quantity field
-      const stock = parseInt(String(p['StockQuantity'] || '0'), 10) || 0;
+      // 3. Stock calculation - use 'Available Stock' as it's more reliable
+      const stock = parseInt(String(p['Available Stock'] || '0'), 10) || 0;
 
       // 4. Image URL
       const imageUrl = p['Image'];
       
       const product: Product = {
-        PartNumber: p['SKU'],
+        PartNumber: p['Item Code'],
         Brand: p['Brand'],
-        Model: p['Model'],
-        PartDescription: p['Name'],
-        Finish: p['Color'],
+        Model: p['Wheel Model Name'],
+        PartDescription: p['Product Name'],
+        Description: p['Description'],
+        Finish: p['Colour/Finish'],
         Size: diameter,
         Width: width,
         PCD: p['PCD'],
-        Offset: p['Offset'],
-        CB: p['CenterBore'],
-        Load: p['LoadRating'],
+        Offset: p['Offest'], // Note: 'Offest' is a typo in the source file
+        CB: p['Centre Bore'],
+        Load: p['Load Rating'],
         Stock: stock,
         Price: calculatedPrice,
         ImageUrl: imageUrl,
@@ -75,20 +76,15 @@ export const source7: DataSource = {
   type: 'csv',
   fetcher,
   parserConfig: {
-    // Updated headers to match the new, more standardized format from the supplier.
+    // These headers are now an exact match to what was found in the error log.
     requiredHeaders: [
         'Brand',
-        'SKU',
-        'Name',
+        'Item Code',
+        'Product Name',
         'RRP',
         'Size',
-        'Color',
         'PCD',
-        'Offset',
-        'CenterBore',
-        'StockQuantity',
-        'LoadRating',
-        'Model'
+        'Available Stock',
     ],
     delimiter: ',',
     encoding: 'windows-1252',
