@@ -3,8 +3,9 @@ import { normalizeProductAttributes } from '../utils/productUtils';
 
 const map = async (data: Product[]): Promise<Product[]> => {
   const initialProducts = data
-    // Rule: Filter for ProductGroupId 220 exclusively. Use loose comparison for flexibility.
-    .filter(p => p && String(p.ProductGroupId || '').trim() == '220')
+    // RULE: Process only items that are likely wheels (have wheel-specific data like BoltCirlce).
+    // This replaces the previous, incorrect filter on ProductGroupId which was selecting tyres.
+    .filter(p => p && p.ArticleId && p.BoltCirlce)
     .map(p => {
       // Price Calculation: (((((pret achizitie * 4)+1080)*1.21)*1.4)/4)*0.48
       const purchasePriceStr = String(p.Price || '0').replace(',', '.');
@@ -16,10 +17,14 @@ const map = async (data: Product[]): Promise<Product[]> => {
       const boltCircle = String(p.BoltCirlce || '').trim();
       const pcd = (numberOfBolts && boltCircle) ? `${numberOfBolts}x${boltCircle}` : '';
 
-      const imageUrl = p.ImageURL;
+      // Image URL is constructed from ImageId, as seen in the API response.
+      const imageUrl = p.ImageId ? `https://api.statusfalgar.se/api/Images/${p.ImageId}` : undefined;
+
+      // NOTE: Stock information (QuantityAvailable) is not present in this API endpoint.
+      // It requires a separate call to /api/Stock. For now, stock will be 0.
+      const stock = parseInt(String(p.QuantityAvailable), 10) || 0;
 
       const product: Product = {
-        // Mapped fields according to the new user request
         PartNumber: p.ArticleId,
         PartDescription: p['Article Text'],
         Brand: p['Brand Name'],
@@ -32,12 +37,12 @@ const map = async (data: Product[]): Promise<Product[]> => {
         CB: p.CenterBore,
         Load: p.LoadRating,
         IsWinterApproved: p.IsWinterApproved,
-        Stock: parseInt(String(p.QuantityAvailable), 10) || 0,
+        Stock: stock,
         Price: calculatedPrice,
         ImageUrl: imageUrl,
         ImageUrls: imageUrl ? [imageUrl] : [],
         Source: 'Sursa 6',
-        ProductType: 'Jante',
+        ProductType: 'Jante', // We are filtering for wheels, so this is correct.
       };
       
       return product;
