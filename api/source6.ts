@@ -4,38 +4,29 @@ export const config = {
   runtime: 'edge',
 };
 
-// --- Target URL ---
-const DATA_URL = 'https://statusfalgar.se/api/PriceList';
-const USER_AGENT = 'Pimpit-B2B-Catalog-Proxy/1.1';
+// --- New Target URL based on API documentation ---
+const DATA_URL = 'https://api.statusfalgar.se/api/PriceList'; 
+const USER_AGENT = 'Pimpit-B2B-Catalog-Proxy/1.2'; // Version bump
 
 /**
- * Fetches data from Source 6 using a secure API key.
- * This replaces the previous multi-step credential-based login process.
+ * Fetches data from Source 6 using Basic Authentication.
  */
 export default async function handler(req: Request): Promise<Response> {
-  // The API key is hardcoded here to resolve the environment variable issue.
-  // In a production environment, this should be stored securely as an environment variable.
-  const apiKey = 'BSzMrDxAzojUYyGVvXZL3G3Bci0d0PsxRXWq';
+  // Credentials provided by the user.
+  const customerId = '5432';
+  const token = 'BSzMrDxAzojUYyGVvXZL3G3Bci0d0PsxRXWq';
 
-  if (!apiKey) {
-    // This check is now redundant but kept for structural integrity.
-    console.error("SOURCE6_API_KEY is not configured on the server.");
-    return new Response(
-      JSON.stringify({ 
-          error: "Cheia API pentru Sursa 6 nu este configurată pe server.",
-          details: "Variabila de mediu SOURCE6_API_KEY lipsește."
-      }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
+  // For Basic Auth, credentials must be in the format "username:password" and Base64 encoded.
+  // In this API's case, it's "customerId:token".
+  const authString = `${customerId}:${token}`;
+  const encodedAuth = btoa(authString); // btoa is available in Edge Runtime
 
   try {
-    // Fetch the actual data using the API key for authorization.
+    // Fetch the data using the new Basic Authentication header.
     const dataResponse = await fetch(DATA_URL, {
         headers: {
             'User-Agent': USER_AGENT,
-            // Standard method for API key authorization.
-            'Authorization': `Bearer ${apiKey}`,
+            'Authorization': `Basic ${encodedAuth}`,
         },
         cache: 'no-store',
     });
@@ -43,7 +34,7 @@ export default async function handler(req: Request): Promise<Response> {
     if (!dataResponse.ok) {
         const errorBodyText = await dataResponse.text();
         console.error(`Source 6 API Error (Status: ${dataResponse.status}): ${errorBodyText}`);
-        throw new Error(`Autorizare eșuată la accesarea datelor (Status: ${dataResponse.status}). Verificați validitatea cheii API.`);
+        throw new Error(`Autorizare eșuată la Sursa 6 (Status: ${dataResponse.status}). Verificați Customer ID și Token.`);
     }
 
     // Stream the data back to the client.
