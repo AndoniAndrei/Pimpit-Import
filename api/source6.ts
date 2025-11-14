@@ -4,9 +4,12 @@ export const config = {
   runtime: 'edge',
 };
 
-// --- New Target URL based on API documentation ---
-const DATA_URL = 'https://api.statusfalgar.se/api/PriceList'; 
-const USER_AGENT = 'Pimpit-B2B-Catalog-Proxy/1.2'; // Version bump
+// --- Updated Target URL based on API documentation ---
+// The previous URL '/api/PriceList' resulted in a 404 Not Found error.
+// The documentation specifies '/api/Articles' for fetching product data.
+// We are including alloy and steel rims as this source provides wheel data.
+const DATA_URL = 'https://api.statusfalgar.se/api/Articles?IncludeAlloyRims=true&IncludeSteelRims=true'; 
+const USER_AGENT = 'Pimpit-B2B-Catalog-Proxy/1.3'; // Version bump
 
 /**
  * Fetches data from Source 6 using Basic Authentication.
