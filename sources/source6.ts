@@ -68,31 +68,8 @@ const fetcher = async (): Promise<Response> => {
 
 export const source6: DataSource = {
   name: 'Sursa 6',
-  type: 'csv',
+  type: 'json', // The API now returns JSON
   fetcher,
-  parserConfig: {
-    // Define the headers required from the new source file for mapping to work.
-    requiredHeaders: [
-      'ProductGroupId',
-      'ArticleId', 
-      'Article Text', 
-      'Brand Name', 
-      'Model Name',
-      'Color',
-      'Width',
-      'Diameter',
-      'Number of bolts',
-      'BoltCirlce',
-      'offset',
-      'CenterBore',
-      'LoadRating',
-      'IsWinterApproved',
-      'QuantityAvailable',
-      'Price',
-      'ImageURL'
-    ],
-    delimiter: ';',
-    encoding: 'windows-1252',
-  },
+  // parserConfig is no longer needed for JSON type
   map,
 };

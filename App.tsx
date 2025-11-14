@@ -150,24 +150,36 @@ const App: React.FC = () => {
               throw new Error(`nu a putut fi încărcată (status: ${res.status}).`);
             }
             
-            const isXml = source.type === 'xml';
-            let text: string;
+            let parsedData: any[];
 
-            if (!isXml && source.parserConfig.encoding) {
-                const buffer = await res.arrayBuffer();
-                const decoder = new TextDecoder(source.parserConfig.encoding);
-                text = decoder.decode(buffer);
-            } else {
-                text = await res.text();
+            if (source.type === 'xml') {
+              const text = await res.text();
+              if (!text.trim()) {
+                throw new Error('este un fișier gol.');
+              }
+              parsedData = parseXMLData(text);
+            } else if (source.type === 'json') {
+              parsedData = await res.json();
+              if (!Array.isArray(parsedData)) {
+                throw new Error('nu a returnat un format JSON valid (array).');
+              }
+            } else { // 'csv' or undefined (default)
+              if (!source.parserConfig) {
+                throw new Error(`este configurată ca CSV dar îi lipsește 'parserConfig'.`);
+              }
+              let text: string;
+              if (source.parserConfig.encoding) {
+                  const buffer = await res.arrayBuffer();
+                  const decoder = new TextDecoder(source.parserConfig.encoding);
+                  text = decoder.decode(buffer);
+              } else {
+                  text = await res.text();
+              }
+              if (!text.trim()) {
+                throw new Error('este un fișier gol.');
+              }
+              parsedData = parseCSVData(text, source.parserConfig);
             }
-
-            if (!text.trim()) {
-              throw new Error('este un fișier gol.');
-            }
-            
-            const parsedData = isXml
-                ? parseXMLData(text)
-                : parseCSVData(text, source.parserConfig);
 
             const mappedData = await source.map(parsedData);
             

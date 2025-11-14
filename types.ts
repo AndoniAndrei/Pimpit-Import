@@ -45,8 +45,8 @@ export interface ParserConfig {
 export interface DataSource {
   name: string;
   url?: string; // Made optional to support fetcher
-  type?: 'csv' | 'xml';
-  parserConfig: ParserConfig;
+  type?: 'csv' | 'xml' | 'json';
+  parserConfig?: ParserConfig;
   map: (data: any[]) => Promise<Product[]>; // Added custom fetcher for resilient sources
   fetcher?: () => Promise<Response>;
 }
