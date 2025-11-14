@@ -4,7 +4,7 @@ import { normalizeProductAttributes } from '../utils/productUtils';
 
 const map = async (data: Product[]): Promise<Product[]> => {
   const initialProducts = data
-    .filter(p => p && p['Item Code'] && String(p['Item Code']).trim() !== '')
+    .filter(p => p && p['SKU'] && String(p['SKU']).trim() !== '')
     .map(p => {
       // 1. Price Calculation
       const rrpStr = String(p['RRP'] || '0').replace(',', '.');
@@ -18,26 +18,24 @@ const map = async (data: Product[]): Promise<Product[]> => {
       const diameter = sizeParts[0] || undefined;
       const width = sizeParts[1] || undefined;
 
-      // 3. Stock calculation
-      const inStock = String(p['in stock'] || '0').trim() === '1';
-      const availableStock = parseInt(String(p['Available stock']), 10) || 0;
-      const stock = inStock ? availableStock : 0;
+      // 3. Stock calculation - simplified to use a single quantity field
+      const stock = parseInt(String(p['StockQuantity'] || '0'), 10) || 0;
 
       // 4. Image URL
       const imageUrl = p['Image'];
       
       const product: Product = {
-        PartNumber: p['Item Code'],
+        PartNumber: p['SKU'],
         Brand: p['Brand'],
-        Model: p['wheel model name'],
-        PartDescription: p['Product Name'],
-        Finish: p['Colour/Finish'],
+        Model: p['Model'],
+        PartDescription: p['Name'],
+        Finish: p['Color'],
         Size: diameter,
         Width: width,
         PCD: p['PCD'],
         Offset: p['Offset'],
-        CB: p['Center Bore'],
-        Load: p['Load rate'],
+        CB: p['CenterBore'],
+        Load: p['LoadRating'],
         Stock: stock,
         Price: calculatedPrice,
         ImageUrl: imageUrl,
@@ -77,21 +75,20 @@ export const source7: DataSource = {
   type: 'csv',
   fetcher,
   parserConfig: {
+    // Updated headers to match the new, more standardized format from the supplier.
     requiredHeaders: [
         'Brand',
-        'Item Code',
-        'Product Name',
+        'SKU',
+        'Name',
         'RRP',
         'Size',
-        'Colour/Finish',
+        'Color',
         'PCD',
         'Offset',
-        'Center Bore',
-        'in stock',
-        'Available stock',
-        'Load rate',
-        'wheel model name'
-        // 'Description' is intentionally ignored from this list.
+        'CenterBore',
+        'StockQuantity',
+        'LoadRating',
+        'Model'
     ],
     delimiter: ',',
     encoding: 'windows-1252',
