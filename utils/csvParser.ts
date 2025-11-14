@@ -1,4 +1,3 @@
-
 import { Product, ParserConfig } from '../types';
 
 // Let TypeScript know that Papa is available globally from the script tag in index.html
@@ -86,8 +85,17 @@ export const parseCSVData = (text: string, config: ParserConfig): Product[] => {
 
 
     if (headerRowIndex === -1) {
-      console.error("Robust Parser: Could not find required CSV headers.", { required: config.requiredHeaders, fileRows: allRows.slice(0, 10) });
-      throw new Error(`Could not find the required CSV header. Please check the file structure.`);
+      // Get the first row from the file as a sample of what was found.
+      const foundHeadersSample = allRows.length > 0 ? allRows[0].join(', ') : 'Fișier gol';
+      
+      const errorMessage = `Antet (coloane) invalid. Așteptat: [..., ${config.requiredHeaders.slice(0, 3).join(', ')}, ...]. Găsit: [${foundHeadersSample}].`;
+      
+      console.error("Robust Parser: Could not find required CSV headers.", { 
+          required: config.requiredHeaders, 
+          filePreview: allRows.slice(0, 5) 
+      });
+
+      throw new Error(errorMessage);
     }
 
     const dataRows = allRows.slice(headerRowIndex + 1);
