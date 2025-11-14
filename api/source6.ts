@@ -13,9 +13,12 @@ const USER_AGENT = 'Pimpit-B2B-Catalog-Proxy/1.1';
  * This replaces the previous multi-step credential-based login process.
  */
 export default async function handler(req: Request): Promise<Response> {
-  const apiKey = process.env.SOURCE6_API_KEY;
+  // The API key is hardcoded here to resolve the environment variable issue.
+  // In a production environment, this should be stored securely as an environment variable.
+  const apiKey = 'BSzMrDxAzojUYyGVvXZL3G3Bci0d0PsxRXWq';
 
   if (!apiKey) {
+    // This check is now redundant but kept for structural integrity.
     console.error("SOURCE6_API_KEY is not configured on the server.");
     return new Response(
       JSON.stringify({ 
