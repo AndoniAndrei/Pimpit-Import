@@ -59,6 +59,15 @@ const formatDisplayOffset = (offset: any): string => {
 const ProductCard: React.FC<ProductCardProps> = ({ product, onProductClick }) => {
   const formattedPrice = new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(product['Price'] || 0);
   
+  // Calculate discount if OldPrice exists and is greater than current Price
+  const hasDiscount = product.OldPrice && product.OldPrice > product.Price;
+  const formattedOldPrice = hasDiscount 
+    ? new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(product.OldPrice)
+    : null;
+  const discountPercent = hasDiscount 
+    ? Math.round(((product.OldPrice - product.Price) / product.OldPrice) * 100) 
+    : 0;
+
   const placeholderImage = `https://via.placeholder.com/400x300.png?text=Imagine+indisponibila`;
   const imageUrl = product['ImageUrl'];
   const productName = cleanValue(product['PartDescription']);
@@ -73,7 +82,7 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onProductClick }) =>
   return (
     <button
       onClick={() => onProductClick(product)}
-      className="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col transition-transform duration-300 hover:scale-105 hover:shadow-xl text-left w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+      className="bg-white rounded-lg shadow-lg overflow-hidden flex flex-col transition-transform duration-300 hover:scale-105 hover:shadow-xl text-left w-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 relative group"
       aria-label={`Vezi detalii pentru ${productName}`}
     >
       <div className="w-full h-48 bg-gray-200 flex items-center justify-center relative">
@@ -84,9 +93,16 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onProductClick }) =>
           loading="lazy"
           onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }}
         />
-        <div className="absolute top-2 right-2 flex items-center gap-2">
+        
+        {/* Badges container */}
+        <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
+            {hasDiscount && (
+                <span className="text-xs font-bold text-white bg-red-600 px-2 py-1 rounded-full shadow animate-pulse">
+                    -{discountPercent}%
+                </span>
+            )}
             {isWinterApproved && (
-                <span className="text-xs font-bold text-blue-800 bg-blue-200 px-2 py-1 rounded-full shadow" title="Potrivit pentru iarnă">❄️ Iarnă</span>
+                <span className="text-xs font-bold text-blue-800 bg-blue-200 px-2 py-1 rounded-full shadow">❄️ Iarnă</span>
             )}
             {hasStock ? (
                 <span className="text-xs font-bold text-green-800 bg-green-200 px-2 py-1 rounded-full shadow">În Stoc</span>
@@ -124,7 +140,14 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onProductClick }) =>
         </div>
 
         <div className="mt-4 pt-4 border-t border-gray-200 text-right">
-          <span className="text-2xl font-extrabold text-blue-600">{formattedPrice}</span>
+          {hasDiscount ? (
+             <div className="flex flex-col items-end">
+                <span className="text-xs text-red-500 line-through font-medium">{formattedOldPrice}</span>
+                <span className="text-2xl font-extrabold text-red-600">{formattedPrice}</span>
+             </div>
+          ) : (
+             <span className="text-2xl font-extrabold text-blue-600">{formattedPrice}</span>
+          )}
           <p className="text-sm text-gray-500">TVA inclus</p>
         </div>
       </div>

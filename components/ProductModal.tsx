@@ -60,6 +60,16 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {
   const [mainImage, setMainImage] = useState<string>(imageUrls[0] || `https://via.placeholder.com/600x450.png?text=Imagine+indisponibila`);
   const placeholderImage = `https://via.placeholder.com/600x450.png?text=Imagine+indisponibila`;
 
+  // Price formatting and Discount logic
+  const formattedPrice = new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(product['Price'] || 0);
+  const hasDiscount = product.OldPrice && product.OldPrice > product.Price;
+  const formattedOldPrice = hasDiscount 
+    ? new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(product.OldPrice)
+    : null;
+  const discountPercent = hasDiscount 
+    ? Math.round(((product.OldPrice - product.Price) / product.OldPrice) * 100) 
+    : 0;
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -134,7 +144,7 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {
       >
         {/* Image Gallery */}
         <div className="w-full md:w-1/2 p-4 flex flex-col bg-gray-100">
-            <div className="flex-grow flex items-center justify-center mb-4">
+            <div className="flex-grow flex items-center justify-center mb-4 relative">
                  <img
                     src={mainImage}
                     alt={productDescription}
@@ -144,6 +154,13 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {
                       setMainImage(placeholderImage);
                     }}
                 />
+                {hasDiscount && (
+                    <div className="absolute top-0 right-0 m-2">
+                         <span className="text-lg font-bold text-white bg-red-600 px-3 py-1 rounded-full shadow-lg">
+                            -{discountPercent}%
+                        </span>
+                    </div>
+                )}
             </div>
             {imageUrls.length > 1 && (
                 <div className="flex space-x-2 justify-center">
@@ -179,7 +196,14 @@ const ProductModal: React.FC<ProductModalProps> = ({ product, onClose }) => {
            
            <div className="mb-6 pb-6 border-b border-gray-200">
              <div className="text-right">
-                <span className="text-3xl font-extrabold text-blue-600">{new Intl.NumberFormat('ro-RO', { style: 'currency', currency: 'RON' }).format(product['Price'] || 0)}</span>
+                {hasDiscount ? (
+                    <>
+                        <span className="block text-base text-red-500 line-through font-medium mb-1">{formattedOldPrice}</span>
+                        <span className="text-3xl font-extrabold text-red-600">{formattedPrice}</span>
+                    </>
+                ) : (
+                    <span className="text-3xl font-extrabold text-blue-600">{formattedPrice}</span>
+                )}
                 <p className="text-sm text-gray-500">TVA inclus</p>
              </div>
              <div className="text-sm text-gray-600 mt-4 space-y-2">

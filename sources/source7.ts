@@ -12,6 +12,10 @@ const map = async (data: Product[]): Promise<Product[]> => {
       // Formula: (((((rrp-(0.2*rrp)*4)+100)*1.21)*1.4)*5.78)/4
       const calculatedPrice = Math.round((((((rrp - (0.2 * rrp)) * 4) + 100) * 1.21) * 1.4) * 5.78 / 4);
 
+      // Calculate Old Price (RRP in RON) - using 5.78 from formula
+      const oldPriceRon = rrp * 5.78;
+      const displayOldPrice = (oldPriceRon > calculatedPrice) ? oldPriceRon : undefined;
+
       // 2. Size splitting (e.g., "19x8.5")
       const sizeStr = String(p['Size'] || '').trim();
       const sizeParts = sizeStr.toLowerCase().split('x');
@@ -39,6 +43,7 @@ const map = async (data: Product[]): Promise<Product[]> => {
         Load: p['Load Rating'],
         Stock: stock,
         Price: calculatedPrice,
+        OldPrice: displayOldPrice ? Math.round(displayOldPrice) : undefined,
         ImageUrl: imageUrl,
         ImageUrls: imageUrl ? [imageUrl] : [],
         Source: 'Sursa 7',

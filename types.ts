@@ -1,5 +1,7 @@
+
 export interface Product {
   [key: string]: any;
+  OldPrice?: number; // Optional field for RRP/List Price
 }
 
 export type FilterMode = 'standard' | 'staggered';

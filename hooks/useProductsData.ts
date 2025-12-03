@@ -12,21 +12,72 @@ export const useProductsData = () => {
   const [loadingMessage, setLoadingMessage] = useState<string>('');
   const [sourceErrors, setSourceErrors] = useState<SourceError[]>([]);
 
+  // Function to apply price history logic
+  const applyPriceDropLogic = (newProducts: Product[], cachedProducts: Product[] | null): Product[] => {
+      if (!cachedProducts || cachedProducts.length === 0) return newProducts;
+
+      // Create a map for fast lookup of historical prices
+      const historyMap = new Map(cachedProducts.map(p => [p.PartNumber, p]));
+
+      return newProducts.map(newProduct => {
+          const cachedProduct = historyMap.get(newProduct.PartNumber);
+          
+          if (!cachedProduct) {
+              return newProduct;
+          }
+
+          // Clone to avoid mutating original source data directly
+          const processedProduct = { ...newProduct };
+
+          // LOGIC: Compare Current Calculated Price vs Last Known Calculated Price
+          
+          // Case 1: Price Dropped (New < Old)
+          // We flag this as a discount based on history.
+          if (newProduct.Price < cachedProduct.Price) {
+              processedProduct.OldPrice = cachedProduct.Price;
+          }
+          // Case 2: Price Stable (New == Old)
+          // If the product was already marked as discounted in the cache, we preserve that flag
+          // so the bubble doesn't disappear immediately on a page refresh.
+          else if (newProduct.Price === cachedProduct.Price && cachedProduct.OldPrice && cachedProduct.OldPrice > newProduct.Price) {
+               processedProduct.OldPrice = cachedProduct.OldPrice;
+          }
+          // Case 3: Price Increased (New > Old)
+          // The discount is no longer valid. We remove the OldPrice flag (or keep the RRP if it was set by source).
+          else if (newProduct.Price > cachedProduct.Price) {
+               // If the logic relies strictly on history, we clear it. 
+               // If source had an RRP-based OldPrice, it might be overwritten here depending on preference.
+               // For now, we assume history takes precedence for "Drop Alerts".
+               processedProduct.OldPrice = undefined;
+          }
+
+          return processedProduct;
+      });
+  };
+
   const fetchProducts = async (forceRefresh = false) => {
       setLoading(true);
       setSourceErrors([]);
+      
+      let cachedData: Product[] | null = null;
 
-      if (!forceRefresh) {
-          setLoadingMessage('Se verifică memoria cache...');
-          const cachedProducts = await getProductsFromCache();
-          if (cachedProducts && cachedProducts.length > 0) {
-              setProducts(cachedProducts);
-              setLoading(false);
-              return;
-          }
+      // 1. Try to load from cache first to show something immediately
+      try {
+        cachedData = await getProductsFromCache();
+      } catch (e) {
+        console.warn("Could not read cache for history comparison", e);
       }
 
-      setProducts([]); // Clear existing products if refreshing
+      if (!forceRefresh && cachedData && cachedData.length > 0) {
+          setLoadingMessage('Se verifică memoria cache...');
+          setProducts(cachedData);
+          setLoading(false);
+          // Even if we use cache, we might want to trigger a background refresh in a real app,
+          // but here we follow the standard flow.
+          return; 
+      }
+
+      setProducts([]); // Clear UI if strictly refreshing
       
       if (allSources.length === 0) {
         setSourceErrors([{ name: 'Configurație Aplicație', message: "Nicio sursă de date nu este configurată." }]);
@@ -95,24 +146,28 @@ export const useProductsData = () => {
         })
       );
 
-      const allProducts: Product[] = [];
+      const allFreshProducts: Product[] = [];
       const errors: SourceError[] = [];
 
       results.forEach((result) => {
         if (result.status === 'fulfilled') {
-          allProducts.push(...result.value);
+          allFreshProducts.push(...result.value);
         } else {
           errors.push(result.reason as SourceError);
         }
       });
       
-      setProducts(allProducts);
+      // 2. Apply "Price Drop" Logic
+      // Compare the fresh data against the cached data (history) before saving.
+      const finalProducts = applyPriceDropLogic(allFreshProducts, cachedData);
+
+      setProducts(finalProducts);
       setSourceErrors(errors);
       setLoading(false);
       setLoadingMessage('');
 
-      if (allProducts.length > 0) {
-          saveProductsToCache(allProducts);
+      if (finalProducts.length > 0) {
+          saveProductsToCache(finalProducts);
       }
   };
 
