@@ -18,17 +18,20 @@ export const useProductsData = () => {
   // Load products from DB (Fast)
   const loadFromSupabase = async () => {
       try {
+          // First, get the total count to show progress if needed, although exact count might be slow on huge tables
           const { count } = await supabase.from('products').select('*', { count: 'exact', head: true });
           const totalRows = count || 0;
           
           if (totalRows === 0) return false; // DB is empty
 
           let allDbProducts: Product[] = [];
-          const PAGE_SIZE = 5000;
+          // CRITICAL FIX: Supabase API limit is 1000 rows per request. 
+          // Setting this higher (e.g. 5000) caused the loop to terminate early because 1000 < 5000.
+          const PAGE_SIZE = 1000; 
           let from = 0;
           let hasMore = true;
 
-          setLoadingMessage(`Se încarcă catalogul...`);
+          setLoadingMessage(`Se încarcă catalogul... (0 din ${totalRows})`);
 
           while (hasMore) {
               const to = from + PAGE_SIZE - 1;
@@ -39,11 +42,22 @@ export const useProductsData = () => {
               if (data && data.length > 0) {
                   const mappedBatch = data.map(mapDbToProduct);
                   allDbProducts = allDbProducts.concat(mappedBatch);
-                  // Update UI incrementally so user sees something fast
-                  setProducts(prev => [...prev, ...mappedBatch]);
                   
-                  if (data.length < PAGE_SIZE) hasMore = false;
-                  else from += PAGE_SIZE;
+                  // Update UI incrementally so user sees something fast
+                  // We use functional update to ensure we append to the latest state
+                  setProducts(prev => {
+                      // Avoid duplicates if React strict mode double-invokes
+                      if (from === 0) return mappedBatch; 
+                      return [...prev, ...mappedBatch];
+                  });
+
+                  setLoadingMessage(`Se încarcă catalogul... (${allDbProducts.length} din ${totalRows})`);
+                  
+                  if (data.length < PAGE_SIZE) {
+                      hasMore = false;
+                  } else {
+                      from += PAGE_SIZE;
+                  }
               } else {
                   hasMore = false;
               }
@@ -98,7 +112,11 @@ export const useProductsData = () => {
 
         await Promise.allSettled(fetchPromises);
 
-        if (processedProducts.length === 0) throw new Error("No products fetched from CSVs.");
+        // SAFETY ABORT: If something went wrong and we have very few products, DO NOT wipe the DB.
+        if (processedProducts.length < 500) {
+            console.error("Safety Abort: Fetched product count (" + processedProducts.length + ") is suspiciously low. Aborting sync to preserve database.");
+            throw new Error("Safety Abort: Too few products fetched. Check sources.");
+        }
 
         // 2. Wipe DB (RPC)
         const { error: truncError } = await supabase.rpc('truncate_products');
@@ -106,18 +124,22 @@ export const useProductsData = () => {
 
         // 3. Batch Insert (Raw Data, No Upsert Check)
         const dbRows = processedProducts.map(mapProductToDb);
-        const BATCH_SIZE = 1000;
+        // Smaller batch size to avoid timeouts or payload limits
+        const BATCH_SIZE = 250; 
         
         for (let i = 0; i < dbRows.length; i += BATCH_SIZE) {
             const batch = dbRows.slice(i, i + BATCH_SIZE);
             const { error: insError } = await supabase.from('products').insert(batch);
-            if (insError) console.error("Batch insert error", insError);
+            if (insError) console.error("Batch insert error at index " + i, insError);
         }
 
         // 4. Update Status
         await supabase.from('sync_status').upsert({ id: 1, last_synced_at: new Date().toISOString(), is_syncing: false });
         
+        console.log("Sync finished successfully. Reloading data...");
         // 5. Refresh UI with new data
+        // Reset products first to avoid duplicates during reload
+        setProducts([]); 
         await loadFromSupabase();
 
       } catch (e) {
@@ -143,7 +165,7 @@ export const useProductsData = () => {
 
           // 3. If empty or old (>1 hour), trigger sync
           if (!hasData || hoursSinceSync > 1) {
-              if (!hasData) setLoadingMessage("Se inițializează catalogul pentru prima dată (poate dura 1 minut)...");
+              if (!hasData) setLoadingMessage("Se inițializează catalogul pentru prima dată...");
               performBackgroundSync(); // Don't await this if we have data, let it run in bg
           }
       } else {
