@@ -26,7 +26,6 @@ export const useProductsData = () => {
 
           let allDbProducts: Product[] = [];
           // CRITICAL FIX: Supabase API limit is 1000 rows per request. 
-          // Setting this higher (e.g. 5000) caused the loop to terminate early because 1000 < 5000.
           const PAGE_SIZE = 1000; 
           let from = 0;
           let hasMore = true;
@@ -78,9 +77,11 @@ export const useProductsData = () => {
       console.log("Starting Background Sync...");
 
       try {
-        // 1. Fetch CSVs (Browser Logic)
+        // 1. Fetch Sources Sequentially (To avoid memory/network bottleneck)
         const processedProducts: Product[] = [];
-        const fetchPromises = allSources.map(async (source) => {
+        
+        for (const source of allSources) {
+            console.log(`Syncing ${source.name}...`);
             try {
                 const fetchOptions: RequestInit = { cache: 'no-store' };
                 const res = source.fetcher ? await source.fetcher() : await fetch(source.url!, fetchOptions);
@@ -104,41 +105,47 @@ export const useProductsData = () => {
                     parsedData = await parseCsvInWorker(text, source.parserConfig);
                 }
                 const mapped = await source.map(parsedData);
+                console.log(`${source.name}: Found ${mapped.length} products.`);
                 processedProducts.push(...mapped);
             } catch (e) {
                 console.error(`Sync error source ${source.name}`, e);
             }
-        });
+        }
 
-        await Promise.allSettled(fetchPromises);
-
-        // SAFETY ABORT: If something went wrong and we have very few products, DO NOT wipe the DB.
-        if (processedProducts.length < 500) {
-            console.error("Safety Abort: Fetched product count (" + processedProducts.length + ") is suspiciously low. Aborting sync to preserve database.");
+        // SAFETY ABORT: Strict check for product count.
+        // If we have significantly fewer products than expected (e.g. 10k), 
+        // it means major sources failed. We abort to protect the existing data.
+        if (processedProducts.length < 10000) {
+            console.error(`Safety Abort: Only ${processedProducts.length} products found. Expected > 10,000. Aborting sync.`);
+            // If this is the FIRST run (DB empty), we have no choice but to show errors.
+            // But we won't mark sync as "done" so it retries later.
             throw new Error("Safety Abort: Too few products fetched. Check sources.");
         }
 
         // 2. Wipe DB (RPC)
+        console.log(`Data looks good (${processedProducts.length} items). Wiping DB...`);
         const { error: truncError } = await supabase.rpc('truncate_products');
         if (truncError) throw truncError;
 
-        // 3. Batch Insert (Raw Data, No Upsert Check)
+        // 3. Batch Insert (Raw Data)
         const dbRows = processedProducts.map(mapProductToDb);
-        // Smaller batch size to avoid timeouts or payload limits
         const BATCH_SIZE = 250; 
         
         for (let i = 0; i < dbRows.length; i += BATCH_SIZE) {
             const batch = dbRows.slice(i, i + BATCH_SIZE);
             const { error: insError } = await supabase.from('products').insert(batch);
-            if (insError) console.error("Batch insert error at index " + i, insError);
+            if (insError) {
+                console.error("Batch insert error at index " + i, insError);
+                // We continue trying to insert other batches
+            }
         }
 
         // 4. Update Status
         await supabase.from('sync_status').upsert({ id: 1, last_synced_at: new Date().toISOString(), is_syncing: false });
         
         console.log("Sync finished successfully. Reloading data...");
+        
         // 5. Refresh UI with new data
-        // Reset products first to avoid duplicates during reload
         setProducts([]); 
         await loadFromSupabase();
 

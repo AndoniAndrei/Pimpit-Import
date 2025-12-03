@@ -5,14 +5,20 @@ import { Product } from '../types';
 export const mapProductToDb = (p: Product) => {
   // We allow duplicates now, so part_number is just data, not a key.
   
+  // Robust validation for numeric fields
+  // If calculation resulted in NaN or Infinity, default to 0 to prevent DB errors
+  const safePrice = Number.isFinite(p.Price) ? p.Price : 0;
+  const safeOldPrice = Number.isFinite(p.OldPrice) ? p.OldPrice : null;
+  const safeStock = Number.isFinite(p.Stock) ? p.Stock : 0;
+
   return {
     part_number: String(p.PartNumber || '').trim(),
     brand: p.Brand,
     model: p.Model,
     part_description: p.PartDescription,
-    price: p.Price,
-    old_price: p.OldPrice,
-    stock: p.Stock,
+    price: safePrice,
+    old_price: safeOldPrice,
+    stock: safeStock,
     image_url: p.ImageUrl,
     source_file: p.Source, // Trace where it came from
     
