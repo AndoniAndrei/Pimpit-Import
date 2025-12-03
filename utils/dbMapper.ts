@@ -3,8 +3,12 @@ import { Product } from '../types';
 
 // Converts an App Product (PascalCase) to a Database Row (snake_case)
 export const mapProductToDb = (p: Product) => {
+  // CRITICAL FIX: Force PartNumber to be a string and trim it.
+  // This prevents duplicates where one source sends 123 (number) and another "123" (string).
+  const cleanPartNumber = String(p.PartNumber || '').trim();
+
   return {
-    part_number: p.PartNumber, // Primary Key
+    part_number: cleanPartNumber, // Primary Key
     brand: p.Brand,
     model: p.Model,
     part_description: p.PartDescription,

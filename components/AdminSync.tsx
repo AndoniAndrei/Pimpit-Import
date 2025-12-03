@@ -24,7 +24,32 @@ const AdminSync: React.FC = () => {
 
     try {
         // 1. Transform data
-        const dbRows = products.map(mapProductToDb);
+        // mapProductToDb now ensures part_number is always a string and trimmed
+        const rawDbRows = products.map(mapProductToDb);
+        
+        // 1.1 Deduplicate rows based on part_number
+        const uniqueRowsMap = new Map();
+        let duplicateCount = 0;
+
+        rawDbRows.forEach(row => {
+            if (row.part_number) {
+                // Check if we already have this part number
+                if (uniqueRowsMap.has(row.part_number)) {
+                    duplicateCount++;
+                }
+                // Overwrite: If duplicate exists, we keep the last one found (usually from a higher priority source if sorted, or just random)
+                uniqueRowsMap.set(row.part_number, row);
+            }
+        });
+        
+        const dbRows = Array.from(uniqueRowsMap.values());
+        
+        if (duplicateCount > 0) {
+            addLog(`Corecție date: S-au eliminat ${duplicateCount} coduri duplicate (ex: 123 vs "123").`);
+            addLog(`Total produse unice de trimis: ${dbRows.length}.`);
+        } else {
+            addLog(`Date curate: Toate cele ${dbRows.length} produse sunt unice.`);
+        }
         
         // 2. Batch upload (Supabase accepts max request sizes, safer to batch 1000 rows)
         const BATCH_SIZE = 500;
@@ -59,6 +84,7 @@ const AdminSync: React.FC = () => {
                      break;
                 } else {
                     addLog(`Eroare la pachetul ${i+1}: ${error.message}`);
+                    hasErrors = true; 
                 }
             }
         }
@@ -67,7 +93,7 @@ const AdminSync: React.FC = () => {
             addLog("Sincronizare finalizată cu succes!");
             setProgress('Gata. Dă refresh paginii pentru a folosi baza de date.');
         } else {
-            setProgress('Sincronizare oprită din cauza erorilor.');
+            setProgress('Sincronizare finalizată cu erori. Verifică log-ul.');
         }
 
     } catch (e: any) {
@@ -115,10 +141,10 @@ const AdminSync: React.FC = () => {
 
         {progress && (
             <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4 overflow-hidden">
-                <div className="bg-green-600 h-2.5 rounded-full animate-pulse-fast" style={{ width: '100%' }}></div>
+                <div className={`h-2.5 rounded-full ${progress.includes('Eroare') || progress.includes('erori') ? 'bg-red-500' : 'bg-green-600 animate-pulse-fast'}`} style={{ width: '100%' }}></div>
             </div>
         )}
-        <p className={`text-sm font-semibold mb-2 ${progress.includes('Eroare') || progress.includes('oprită') ? 'text-red-600' : 'text-green-700'}`}>{progress}</p>
+        <p className={`text-sm font-semibold mb-2 ${progress.includes('Eroare') || progress.includes('erori') ? 'text-red-600' : 'text-green-700'}`}>{progress}</p>
 
         <div className="bg-gray-900 text-green-400 p-4 rounded-md h-48 overflow-y-auto text-xs font-mono shadow-inner border border-gray-700">
             {log.length === 0 ? <span className="text-gray-500 opacity-50">Log-urile vor apărea aici...</span> : log.map((l, i) => <div key={i} className="mb-1">{l}</div>)}
