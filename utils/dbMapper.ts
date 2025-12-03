@@ -3,12 +3,10 @@ import { Product } from '../types';
 
 // Converts an App Product (PascalCase) to a Database Row (snake_case)
 export const mapProductToDb = (p: Product) => {
-  // CRITICAL FIX: Force PartNumber to be a string and trim it.
-  // This prevents duplicates where one source sends 123 (number) and another "123" (string).
-  const cleanPartNumber = String(p.PartNumber || '').trim();
-
+  // We allow duplicates now, so part_number is just data, not a key.
+  
   return {
-    part_number: cleanPartNumber, // Primary Key
+    part_number: String(p.PartNumber || '').trim(),
     brand: p.Brand,
     model: p.Model,
     part_description: p.PartDescription,
@@ -16,6 +14,7 @@ export const mapProductToDb = (p: Product) => {
     old_price: p.OldPrice,
     stock: p.Stock,
     image_url: p.ImageUrl,
+    source_file: p.Source, // Trace where it came from
     
     // Indexed filters
     size: p.Size ? String(p.Size) : null,
@@ -33,7 +32,6 @@ export const mapProductToDb = (p: Product) => {
         weight: p.Weight,
         description: p.Description,
         image_urls: p.ImageUrls,
-        source: p.Source,
         is_winter_approved: p.IsWinterApproved,
         on_the_water_stock: p.OnTheWaterStock,
         youtube_url: p.YoutubeUrl,
@@ -49,6 +47,7 @@ export const mapDbToProduct = (row: any): Product => {
   const metadata = row.metadata || {};
   
   return {
+    id: row.id, // Keep the DB ID
     PartNumber: row.part_number,
     Brand: row.brand,
     Model: row.model,
@@ -57,6 +56,7 @@ export const mapDbToProduct = (row: any): Product => {
     OldPrice: row.old_price,
     Stock: row.stock,
     ImageUrl: row.image_url,
+    Source: row.source_file,
     
     Size: row.size,
     Width: row.width,
@@ -72,7 +72,6 @@ export const mapDbToProduct = (row: any): Product => {
     Weight: metadata.weight,
     Description: metadata.description,
     ImageUrls: metadata.image_urls || (row.image_url ? [row.image_url] : []),
-    Source: metadata.source || 'Database',
     IsWinterApproved: metadata.is_winter_approved,
     OnTheWaterStock: metadata.on_the_water_stock,
     YoutubeUrl: metadata.youtube_url,

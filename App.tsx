@@ -7,7 +7,6 @@ import ActiveFilters from './components/ActiveFilters';
 import Spinner from './components/Spinner';
 import Pagination from './components/Pagination';
 import ErrorNotification from './components/ErrorNotification';
-import AdminSync from './components/AdminSync'; // Import the new component
 import { useProductsData } from './hooks/useProductsData';
 import { useProductFilters } from './hooks/useProductFilters';
 
@@ -15,7 +14,7 @@ const ProductModal = lazy(() => import('./components/ProductModal'));
 
 const App: React.FC = () => {
   // Use custom hooks for data and filtering logic
-  const { products, loading, loadingMessage, sourceErrors, isUsingDatabase } = useProductsData();
+  const { products, loading, loadingMessage, sourceErrors, isUsingDatabase, isSyncing } = useProductsData();
   const { 
     filters, 
     setFilters, 
@@ -31,7 +30,6 @@ const App: React.FC = () => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [itemsPerPage, setItemsPerPage] = useState<number>(24);
-  const [showAdmin, setShowAdmin] = useState(false); // Toggle for Admin Panel
 
   // Pagination logic
   const totalPages = useMemo(() => {
@@ -54,17 +52,6 @@ const App: React.FC = () => {
       setCurrentPage(1);
     }
   }, [filters, itemsPerPage]);
-
-  // Secret shortcut to toggle admin: Ctrl + Shift + A
-  useEffect(() => {
-      const handleKeyDown = (e: KeyboardEvent) => {
-          if (e.ctrlKey && e.shiftKey && e.key === 'A') {
-              setShowAdmin(prev => !prev);
-          }
-      };
-      window.addEventListener('keydown', handleKeyDown);
-      return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
 
   const handleProductClick = (product: Product) => setSelectedProduct(product);
   const handleCloseModal = () => setSelectedProduct(null);
@@ -107,29 +94,26 @@ const App: React.FC = () => {
         </a>
         <p className="text-gray-500 mt-2">Catalog Furnizori Piese Auto</p>
         {!loading && products.length > 0 && (
-          <div className="mt-4">
+          <div className="mt-4 flex justify-center items-center gap-2">
              <p className="text-lg text-gray-700 font-light inline-block">
                 <span className="font-semibold">{products.length.toLocaleString('ro-RO')}</span> Produse Unice
              </p>
-             {isUsingDatabase ? (
-                 <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full border border-green-200" title="Datele sunt livrate din baza de date rapidă">DB Conectat</span>
-             ) : (
-                 <span className="ml-2 px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded-full border border-gray-200" title="Se folosesc fișierele CSV brute">Mod CSV</span>
+             {isUsingDatabase && (
+                 <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full border border-green-200" title="Bază de date conectată">LIVE</span>
+             )}
+             {isSyncing && (
+                 <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full border border-blue-200 animate-pulse flex items-center">
+                    <svg className="animate-spin -ml-1 mr-1 h-3 w-3 text-blue-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Se actualizează catalogul...
+                 </span>
              )}
           </div>
         )}
-        
-        {/* Toggle Admin Button (visible for convenience in this demo, usually hidden) */}
-        <button 
-            onClick={() => setShowAdmin(!showAdmin)}
-            className="absolute top-0 right-0 text-xs text-gray-300 hover:text-gray-500"
-        >
-            Admin
-        </button>
       </header>
       
-      {showAdmin && <AdminSync />}
-
       <FilterControls
         filters={filters}
         setFilters={setFilters}
@@ -168,7 +152,7 @@ const App: React.FC = () => {
                     className="mb-4"
                   />
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                      {paginatedProducts.map((product, index) => <ProductCard key={`${product['PartNumber']}-${index}`} product={product} onProductClick={handleProductClick} />)}
+                      {paginatedProducts.map((product, index) => <ProductCard key={product.id || `${product['PartNumber']}-${index}`} product={product} onProductClick={handleProductClick} />)}
                   </div>
                   <Pagination
                     currentPage={currentPage}
@@ -189,7 +173,7 @@ const App: React.FC = () => {
                       {isAnyFilterActive ? 'Niciun produs nu corespunde filtrelor' : 'Niciun produs disponibil'}
                     </h3>
                     <p className="mt-2 text-gray-600">
-                      {isAnyFilterActive ? 'Încercați să modificați termenii de căutare sau să resetați filtrele.' : 'Momentan nu există produse în catalog. Vă rugăm să reveniți mai târziu.'}
+                      {isAnyFilterActive ? 'Încercați să modificați termenii de căutare sau să resetați filtrele.' : 'Se descarcă produsele din server...'}
                     </p>
                     {isAnyFilterActive && (
                       <div className="mt-6">

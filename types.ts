@@ -1,7 +1,9 @@
 
 export interface Product {
+  id?: string; // Database ID (UUID)
   [key: string]: any;
   OldPrice?: number; // Optional field for RRP/List Price
+  source_file?: string;
 }
 
 export type FilterMode = 'standard' | 'staggered';
