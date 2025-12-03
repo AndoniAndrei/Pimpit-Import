@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface SearchBarProps {
   searchTerm: string;
@@ -7,6 +7,27 @@ interface SearchBarProps {
 }
 
 const SearchBar: React.FC<SearchBarProps> = ({ searchTerm, setSearchTerm }) => {
+  const [localTerm, setLocalTerm] = useState(searchTerm);
+
+  // Update local state when prop changes (e.g. from Reset Filters button or URL load)
+  useEffect(() => {
+    setLocalTerm(searchTerm);
+  }, [searchTerm]);
+
+  // Debounce logic: Update parent state only after user stops typing for 500ms
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      // Only update if the value actually changed to prevent loops
+      if (localTerm !== searchTerm) {
+        setSearchTerm(localTerm);
+      }
+    }, 500);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [localTerm, setSearchTerm, searchTerm]);
+
   return (
     <div className="relative w-full">
       <label htmlFor="search-input" className="sr-only">Căutare produs</label>
@@ -18,8 +39,8 @@ const SearchBar: React.FC<SearchBarProps> = ({ searchTerm, setSearchTerm }) => {
       <input
         id="search-input"
         type="text"
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
+        value={localTerm}
+        onChange={(e) => setLocalTerm(e.target.value)}
         placeholder="Căutați după nume, cod, EAN..."
         className="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm shadow-sm"
       />

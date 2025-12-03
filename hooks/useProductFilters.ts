@@ -18,11 +18,76 @@ const initialFilters: Filters = {
     Offset_Rear: 'all',
 };
 
+// Helper to read filters from URL
+const getFiltersFromUrl = (): Filters | null => {
+    if (typeof window === 'undefined') return null;
+    
+    const params = new URLSearchParams(window.location.search);
+    const filtersFromUrl: any = { ...initialFilters };
+    let hasParams = false;
+
+    for (const key of Object.keys(initialFilters)) {
+        const val = params.get(key);
+        if (val) {
+            filtersFromUrl[key] = val;
+            hasParams = true;
+        }
+    }
+    
+    return hasParams ? filtersFromUrl : null;
+};
+
 export const useProductFilters = (products: Product[]) => {
   const [filterMode, setFilterMode] = useState<FilterMode>('standard');
-  const [filters, setFilters] = useState<Filters>(initialFilters);
+  
+  // Initialize state from URL or defaults
+  const [filters, setFilters] = useState<Filters>(() => {
+      const urlFilters = getFiltersFromUrl();
+      if (urlFilters) {
+          // If we have "Front/Rear" specific filters in URL, switch mode automatically
+          if (urlFilters.Width_Front !== 'all' || urlFilters.Offset_Front !== 'all' || 
+              urlFilters.Width_Rear !== 'all' || urlFilters.Offset_Rear !== 'all') {
+              // We need to set this mode in a useEffect, but we can infer it here logic-wise
+              // However, since state init runs once, we'll handle the mode switch via effect below or just let the user toggle.
+              // For better UX, let's detect it.
+          }
+          return urlFilters;
+      }
+      return initialFilters;
+  });
 
-  const handleResetFilters = () => setFilters(initialFilters);
+  // Effect: Sync URL when filters change
+  useEffect(() => {
+      const params = new URLSearchParams();
+      let hasActiveFilters = false;
+
+      (Object.keys(filters) as Array<keyof Filters>).forEach(key => {
+          const value = filters[key];
+          if (value !== initialFilters[key] && value !== '') {
+              params.set(key, value);
+              hasActiveFilters = true;
+          }
+      });
+
+      const newUrl = `${window.location.pathname}${hasActiveFilters ? '?' + params.toString() : ''}`;
+      
+      // We use replaceState to avoid cluttering the browser history with every filter click
+      window.history.replaceState({ path: newUrl }, '', newUrl);
+  }, [filters]);
+
+  // Effect: Auto-switch mode based on URL params on mount
+  useEffect(() => {
+      if (filters.Width_Front !== 'all' || filters.Offset_Front !== 'all' || 
+          filters.Width_Rear !== 'all' || filters.Offset_Rear !== 'all') {
+          setFilterMode('staggered');
+      }
+  }, []); // Run only once on mount
+
+  const handleResetFilters = () => {
+      setFilters(initialFilters);
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname);
+  };
 
   const baseFilteredProducts = useMemo(() => {
     return products.filter(product => {
@@ -94,26 +159,32 @@ export const useProductFilters = (products: Product[]) => {
     const newFilters = { ...filters };
     let changed = false;
     const checkAndReset = (key: keyof Filters, options: string[]) => {
+      // Don't reset if it's currently loading initial data (Available options might be empty initially)
+      if (products.length === 0) return;
+      
       if (newFilters[key] !== 'all' && !options.includes(newFilters[key] as string)) {
         (newFilters[key] as any) = 'all';
         changed = true;
       }
     };
-    checkAndReset('Brand', availableOptions.Brand);
-    checkAndReset('Finish', availableOptions.Finish);
-    checkAndReset('Size', availableOptions.Size);
-    checkAndReset('PCD', availableOptions.PCD);
-    if (filterMode === 'standard') {
-        checkAndReset('Width', availableOptions.Width);
-        checkAndReset('Offset', availableOptions.Offset);
-    } else {
-        checkAndReset('Width_Front', availableOptions.Width_Front);
-        checkAndReset('Offset_Front', availableOptions.Offset_Front);
-        checkAndReset('Width_Rear', availableOptions.Width_Rear);
-        checkAndReset('Offset_Rear', availableOptions.Offset_Rear);
+    
+    if (products.length > 0) {
+        checkAndReset('Brand', availableOptions.Brand);
+        checkAndReset('Finish', availableOptions.Finish);
+        checkAndReset('Size', availableOptions.Size);
+        checkAndReset('PCD', availableOptions.PCD);
+        if (filterMode === 'standard') {
+            checkAndReset('Width', availableOptions.Width);
+            checkAndReset('Offset', availableOptions.Offset);
+        } else {
+            checkAndReset('Width_Front', availableOptions.Width_Front);
+            checkAndReset('Offset_Front', availableOptions.Offset_Front);
+            checkAndReset('Width_Rear', availableOptions.Width_Rear);
+            checkAndReset('Offset_Rear', availableOptions.Offset_Rear);
+        }
+        if (changed) setFilters(newFilters);
     }
-    if (changed) setFilters(newFilters);
-  }, [availableOptions, filters, filterMode]);
+  }, [availableOptions, filters, filterMode, products.length]);
 
 
   const filteredProducts = useMemo(() => {
