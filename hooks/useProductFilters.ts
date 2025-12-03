@@ -1,0 +1,168 @@
+
+import { useState, useMemo, useEffect } from 'react';
+import { Product, Filters, FilterMode, AvailableOptions } from '../types';
+import { expandPcdValues, expandOffsetValues, productMatchesFilter } from '../utils/filterUtils';
+
+const initialFilters: Filters = {
+    searchTerm: '',
+    Brand: 'all',
+    Finish: 'all',
+    Size: 'all',
+    PCD: 'all',
+    ProductType: 'all',
+    Width: 'all',
+    Offset: 'all',
+    Width_Front: 'all',
+    Offset_Front: 'all',
+    Width_Rear: 'all',
+    Offset_Rear: 'all',
+};
+
+export const useProductFilters = (products: Product[]) => {
+  const [filterMode, setFilterMode] = useState<FilterMode>('standard');
+  const [filters, setFilters] = useState<Filters>(initialFilters);
+
+  const handleResetFilters = () => setFilters(initialFilters);
+
+  const baseFilteredProducts = useMemo(() => {
+    return products.filter(product => {
+      const { searchTerm, Brand, Finish, Size, PCD, ProductType } = filters;
+      if (searchTerm) {
+        const term = searchTerm.toLowerCase();
+        const name = String(product['PartDescription'] || '').toLowerCase();
+        const code = String(product['PartNumber'] || '').toLowerCase();
+        const ean = String(product['EAN'] || '').toLowerCase();
+        if (!name.includes(term) && !code.includes(term) && !ean.includes(term)) return false;
+      }
+      if (Brand !== 'all' && product['Brand'] !== Brand) return false;
+      if (Finish !== 'all' && product['Finish'] !== Finish) return false;
+      if (Size !== 'all' && String(product['Size']) !== Size) return false;
+      if (PCD !== 'all' && !productMatchesFilter(product['PCD'], PCD, 'PCD')) return false;
+      if (ProductType !== 'all' && product['ProductType'] !== ProductType) return false;
+      return true;
+    });
+  }, [products, filters]);
+
+  const availableOptions = useMemo<AvailableOptions>(() => {
+    const getRawUniqueValues = (items: Product[], key: string): any[] => {
+        return [...new Set(items.map(p => p[key]).filter(v => v !== null && v !== undefined && v !== ''))];
+    };
+    const sortNumeric = (arr: string[]) => arr.sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
+
+    // Create a cascade of filtered product sets.
+    const productTypeFiltered = products.filter(p => {
+        if (filters.searchTerm) {
+             const term = filters.searchTerm.toLowerCase();
+             if (!(String(p['PartDescription'] || '').toLowerCase().includes(term) || String(p['PartNumber'] || '').toLowerCase().includes(term) || String(p['EAN'] || '').toLowerCase().includes(term))) return false;
+        }
+        if (filters.ProductType !== 'all' && p.ProductType !== filters.ProductType) return false;
+        return true;
+    });
+
+    const brandFiltered = productTypeFiltered.filter(p => filters.Brand === 'all' || p.Brand === filters.Brand);
+    const finishFiltered = brandFiltered.filter(p => filters.Finish === 'all' || p.Finish === filters.Finish);
+    const sizeFiltered = finishFiltered.filter(p => filters.Size === 'all' || String(p.Size) === filters.Size);
+    const pcdFiltered = sizeFiltered.filter(p => filters.PCD === 'all' || productMatchesFilter(p.PCD, filters.PCD, 'PCD'));
+
+    const newOptions: AvailableOptions = {
+        ProductType: sortNumeric(getRawUniqueValues(products, 'ProductType').map(String)),
+        Brand: sortNumeric(getRawUniqueValues(productTypeFiltered, 'Brand').map(String)),
+        Finish: sortNumeric(getRawUniqueValues(brandFiltered, 'Finish').map(String)),
+        Size: sortNumeric(getRawUniqueValues(finishFiltered, 'Size').map(String)),
+        PCD: sortNumeric(expandPcdValues(getRawUniqueValues(sizeFiltered, 'PCD'))),
+        Width: [], Offset: [], Width_Front: [], Offset_Front: [], Width_Rear: [], Offset_Rear: []
+    };
+    
+    const allWidths = sortNumeric(getRawUniqueValues(pcdFiltered, 'Width').map(String));
+    newOptions.Width = allWidths;
+    newOptions.Width_Front = allWidths;
+    newOptions.Width_Rear = allWidths;
+
+    const offsetStandardProducts = pcdFiltered.filter(p => filters.Width === 'all' || String(p.Width) === filters.Width);
+    newOptions.Offset = sortNumeric(expandOffsetValues(getRawUniqueValues(offsetStandardProducts, 'Offset')));
+
+    const offsetFrontProducts = pcdFiltered.filter(p => filters.Width_Front === 'all' || String(p.Width) === filters.Width_Front);
+    newOptions.Offset_Front = sortNumeric(expandOffsetValues(getRawUniqueValues(offsetFrontProducts, 'Offset')));
+    
+    const offsetRearProducts = pcdFiltered.filter(p => filters.Width_Rear === 'all' || String(p.Width) === filters.Width_Rear);
+    newOptions.Offset_Rear = sortNumeric(expandOffsetValues(getRawUniqueValues(offsetRearProducts, 'Offset')));
+
+    return newOptions;
+  }, [products, filters]);
+
+  useEffect(() => {
+    const newFilters = { ...filters };
+    let changed = false;
+    const checkAndReset = (key: keyof Filters, options: string[]) => {
+      if (newFilters[key] !== 'all' && !options.includes(newFilters[key] as string)) {
+        (newFilters[key] as any) = 'all';
+        changed = true;
+      }
+    };
+    checkAndReset('Brand', availableOptions.Brand);
+    checkAndReset('Finish', availableOptions.Finish);
+    checkAndReset('Size', availableOptions.Size);
+    checkAndReset('PCD', availableOptions.PCD);
+    if (filterMode === 'standard') {
+        checkAndReset('Width', availableOptions.Width);
+        checkAndReset('Offset', availableOptions.Offset);
+    } else {
+        checkAndReset('Width_Front', availableOptions.Width_Front);
+        checkAndReset('Offset_Front', availableOptions.Offset_Front);
+        checkAndReset('Width_Rear', availableOptions.Width_Rear);
+        checkAndReset('Offset_Rear', availableOptions.Offset_Rear);
+    }
+    if (changed) setFilters(newFilters);
+  }, [availableOptions, filters, filterMode]);
+
+
+  const filteredProducts = useMemo(() => {
+    if (filterMode === 'standard') {
+      return baseFilteredProducts.filter(product => {
+        if (filters.Width !== 'all' && String(product['Width']) !== filters.Width) return false;
+        if (filters.Offset !== 'all' && !productMatchesFilter(product['Offset'], filters.Offset, 'Offset')) return false;
+        return true;
+      });
+    } else { 
+      const frontFiltersActive = filters.Width_Front !== 'all' || filters.Offset_Front !== 'all';
+      const rearFiltersActive = filters.Width_Rear !== 'all' || filters.Offset_Rear !== 'all';
+      if (!frontFiltersActive && !rearFiltersActive) return baseFilteredProducts;
+
+      return baseFilteredProducts.filter(product => {
+        const matchesFront = (filters.Width_Front === 'all' || String(product.Width) === filters.Width_Front) &&
+                             (filters.Offset_Front === 'all' || productMatchesFilter(product.Offset, filters.Offset_Front, 'Offset'));
+        const matchesRear = (filters.Width_Rear === 'all' || String(product.Width) === filters.Width_Rear) &&
+                            (filters.Offset_Rear === 'all' || productMatchesFilter(product.Offset, filters.Offset_Rear, 'Offset'));
+        if (frontFiltersActive && !rearFiltersActive) return matchesFront;
+        if (!frontFiltersActive && rearFiltersActive) return matchesRear;
+        return matchesFront || matchesRear;
+      });
+    }
+  }, [baseFilteredProducts, filters, filterMode]);
+
+  const isAnyFilterActive = useMemo(() => {
+    if (filterMode === 'standard') {
+      return Object.keys(initialFilters).some(key => 
+        !['Width_Front', 'Offset_Front', 'Width_Rear', 'Offset_Rear'].includes(key) &&
+        filters[key as keyof Filters] !== initialFilters[key as keyof Filters]
+      );
+    } else {
+       return Object.keys(initialFilters).some(key => 
+        !['Width', 'Offset'].includes(key) &&
+        filters[key as keyof Filters] !== initialFilters[key as keyof Filters]
+      );
+    }
+  }, [filters, filterMode]);
+
+  return {
+      filters,
+      setFilters,
+      filterMode,
+      setFilterMode,
+      availableOptions,
+      filteredProducts,
+      handleResetFilters,
+      isAnyFilterActive,
+      initialFilters
+  };
+};
