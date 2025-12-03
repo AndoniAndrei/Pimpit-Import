@@ -63,23 +63,55 @@ export const useProductsData = () => {
       const isDbConnected = await checkSupabaseConnection();
       
       if (isDbConnected) {
-          setLoadingMessage('Se descarcă datele din baza de date Pimpit...');
           setIsUsingDatabase(true);
           try {
-              // Fetch all products (Supabase can handle 50k rows in JSON relatively fast, 
-              // but pagination is better long term. For now, we fetch all to keep client filtering working)
-              const { data, error } = await supabase
-                .from('products')
-                .select('*');
+              // Fetch total count first
+              const { count } = await supabase
+                  .from('products')
+                  .select('*', { count: 'exact', head: true });
               
-              if (error) throw error;
+              const totalRows = count || 0;
+              let allDbProducts: Product[] = [];
+              const PAGE_SIZE = 2000; // Supabase limit is usually higher, but 2000 is safe and fast
+              let from = 0;
+              let hasMore = true;
+
+              setLoadingMessage(`Se conectează la baza de date (${totalRows} produse)...`);
+
+              // Loop to fetch ALL data
+              while (hasMore) {
+                  const to = from + PAGE_SIZE - 1;
+                  
+                  // Update UI with progress
+                  setLoadingMessage(`Se descarcă din DB: ${from.toLocaleString()} - ${Math.min(to, totalRows).toLocaleString()} din ${totalRows.toLocaleString()}...`);
+                  
+                  const { data, error } = await supabase
+                    .from('products')
+                    .select('*')
+                    .range(from, to);
+                  
+                  if (error) throw error;
+                  
+                  if (data && data.length > 0) {
+                      const mappedBatch = data.map(mapDbToProduct);
+                      allDbProducts = allDbProducts.concat(mappedBatch);
+                      
+                      // If we got fewer rows than requested, we reached the end
+                      if (data.length < PAGE_SIZE) {
+                          hasMore = false;
+                      } else {
+                          from += PAGE_SIZE;
+                      }
+                  } else {
+                      hasMore = false;
+                  }
+              }
               
-              if (data && data.length > 0) {
-                  const mappedProducts = data.map(mapDbToProduct);
-                  setProducts(mappedProducts);
-                  saveProductsToCache(mappedProducts);
+              if (allDbProducts.length > 0) {
+                  setProducts(allDbProducts);
+                  saveProductsToCache(allDbProducts);
                   setLoading(false);
-                  return; // EXIT EARLY - WE HAVE DB DATA
+                  return; // EXIT EARLY - WE HAVE FULL DB DATA
               }
           } catch (err) {
               console.error("Eroare la citirea din DB, trecem pe fallback (CSV)", err);
