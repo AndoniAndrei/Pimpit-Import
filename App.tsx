@@ -7,6 +7,7 @@ import ActiveFilters from './components/ActiveFilters';
 import Spinner from './components/Spinner';
 import Pagination from './components/Pagination';
 import ErrorNotification from './components/ErrorNotification';
+import AdminSync from './components/AdminSync'; // Import the new component
 import { useProductsData } from './hooks/useProductsData';
 import { useProductFilters } from './hooks/useProductFilters';
 
@@ -14,7 +15,7 @@ const ProductModal = lazy(() => import('./components/ProductModal'));
 
 const App: React.FC = () => {
   // Use custom hooks for data and filtering logic
-  const { products, loading, loadingMessage, sourceErrors } = useProductsData();
+  const { products, loading, loadingMessage, sourceErrors, isUsingDatabase } = useProductsData();
   const { 
     filters, 
     setFilters, 
@@ -30,6 +31,7 @@ const App: React.FC = () => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [itemsPerPage, setItemsPerPage] = useState<number>(24);
+  const [showAdmin, setShowAdmin] = useState(false); // Toggle for Admin Panel
 
   // Pagination logic
   const totalPages = useMemo(() => {
@@ -52,6 +54,17 @@ const App: React.FC = () => {
       setCurrentPage(1);
     }
   }, [filters, itemsPerPage]);
+
+  // Secret shortcut to toggle admin: Ctrl + Shift + A
+  useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+          if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+              setShowAdmin(prev => !prev);
+          }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const handleProductClick = (product: Product) => setSelectedProduct(product);
   const handleCloseModal = () => setSelectedProduct(null);
@@ -88,18 +101,35 @@ const App: React.FC = () => {
   return (
     <div className="container mx-auto p-4 md:p-8">
       <ErrorNotification errors={sourceErrors} />
-      <header className="text-center mb-8">
+      <header className="text-center mb-8 relative">
         <a href="/" onClick={handleLogoClick} aria-label="Pagina principală, resetează filtrele">
           <img src="https://pimpit.ro/wp-content/uploads/2024/08/logo-pimpit-ro.png" alt="Pimpit.ro Logo" className="mx-auto mb-4" style={{ maxWidth: '400px' }}/>
         </a>
         <p className="text-gray-500 mt-2">Catalog Furnizori Piese Auto</p>
         {!loading && products.length > 0 && (
-          <p className="text-lg text-gray-700 mt-4 font-light">
-            <span className="font-semibold">{products.length.toLocaleString('ro-RO')}</span> Produse Unice în Catalog
-          </p>
+          <div className="mt-4">
+             <p className="text-lg text-gray-700 font-light inline-block">
+                <span className="font-semibold">{products.length.toLocaleString('ro-RO')}</span> Produse Unice
+             </p>
+             {isUsingDatabase ? (
+                 <span className="ml-2 px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full border border-green-200" title="Datele sunt livrate din baza de date rapidă">DB Conectat</span>
+             ) : (
+                 <span className="ml-2 px-2 py-0.5 bg-gray-100 text-gray-500 text-xs rounded-full border border-gray-200" title="Se folosesc fișierele CSV brute">Mod CSV</span>
+             )}
+          </div>
         )}
+        
+        {/* Toggle Admin Button (visible for convenience in this demo, usually hidden) */}
+        <button 
+            onClick={() => setShowAdmin(!showAdmin)}
+            className="absolute top-0 right-0 text-xs text-gray-300 hover:text-gray-500"
+        >
+            Admin
+        </button>
       </header>
       
+      {showAdmin && <AdminSync />}
+
       <FilterControls
         filters={filters}
         setFilters={setFilters}
@@ -121,7 +151,7 @@ const App: React.FC = () => {
           <>
             <div className="text-left text-gray-600 mb-4">
                {products.length === 0 && !loading 
-                    ? <span className="ml-2">Niciun produs nu a putut fi încărcat.</span>
+                    ? <span className="ml-2">Niciun produs nu a putut fi încărcat. Verifică setările.</span>
                     : <span dangerouslySetInnerHTML={{ __html: displayInfo }} />
                }
             </div>
@@ -165,7 +195,7 @@ const App: React.FC = () => {
                       <div className="mt-6">
                         <button
                           onClick={handleResetFilters}
-                          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                          className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                         >
                           Resetează Filtrele
                         </button>

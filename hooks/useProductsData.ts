@@ -3,47 +3,39 @@ import { useState, useEffect, useRef } from 'react';
 import { Product, SourceError } from '../types';
 import { allSources } from '../sources';
 import { parseXMLData } from '../utils/xmlParser';
-import { parseCsvInWorker } from '../utils/csvWorker'; // Use the new worker
+import { parseCsvInWorker } from '../utils/csvWorker'; 
 import { getProductsFromCache, saveProductsToCache } from '../utils/cache';
+import { supabase, checkSupabaseConnection } from '../lib/supabase';
+import { mapDbToProduct } from '../utils/dbMapper';
 
 export const useProductsData = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [loadingMessage, setLoadingMessage] = useState<string>('');
   const [sourceErrors, setSourceErrors] = useState<SourceError[]>([]);
+  const [isUsingDatabase, setIsUsingDatabase] = useState(false);
 
-  // We use a ref to track products by source to efficiently merge updates without re-filtering the entire list constantly
   const productsBySourceRef = useRef<Map<string, Product[]>>(new Map());
 
   // Function to apply price history logic
   const applyPriceDropLogic = (newProducts: Product[], cachedProducts: Product[] | null): Product[] => {
       if (!cachedProducts || cachedProducts.length === 0) return newProducts;
-
-      // Create a map for fast lookup of historical prices
       const historyMap = new Map(cachedProducts.map(p => [p.PartNumber, p]));
 
       return newProducts.map(newProduct => {
           const cachedProduct = historyMap.get(newProduct.PartNumber);
-          
-          if (!cachedProduct) {
-              return newProduct;
-          }
+          if (!cachedProduct) return newProduct;
 
           const processedProduct = { ...newProduct };
-
-          // Case 1: Price Dropped (New < Old)
           if (newProduct.Price < cachedProduct.Price) {
               processedProduct.OldPrice = cachedProduct.Price;
           }
-          // Case 2: Price Stable (New == Old), keep existing flag
           else if (newProduct.Price === cachedProduct.Price && cachedProduct.OldPrice && cachedProduct.OldPrice > newProduct.Price) {
                processedProduct.OldPrice = cachedProduct.OldPrice;
           }
-          // Case 3: Price Increased, clear flag
           else if (newProduct.Price > cachedProduct.Price) {
                processedProduct.OldPrice = undefined;
           }
-
           return processedProduct;
       });
   };
@@ -52,7 +44,7 @@ export const useProductsData = () => {
       setLoading(true);
       setSourceErrors([]);
       
-      // 1. Initialize from Cache
+      // 0. Check for cached data for immediate display
       let cachedData: Product[] | null = null;
       try {
         cachedData = await getProductsFromCache();
@@ -60,40 +52,62 @@ export const useProductsData = () => {
         console.warn("Could not read cache", e);
       }
 
-      // Initialize the source map
-      productsBySourceRef.current.clear();
-      
       if (!forceRefresh && cachedData && cachedData.length > 0) {
-          // Hydrate the map with cached data
-          cachedData.forEach(p => {
-              const src = p.Source || 'Unknown';
-              if (!productsBySourceRef.current.has(src)) {
-                  productsBySourceRef.current.set(src, []);
-              }
-              productsBySourceRef.current.get(src)!.push(p);
-          });
-          
           setProducts(cachedData);
-          setLoadingMessage('Se actualizează ofertele...');
+          setLoadingMessage('Se verifică actualizări...');
       } else {
-          setLoadingMessage(`Se inițializează descărcarea din ${allSources.length} surse...`);
           setProducts([]);
       }
 
-      if (allSources.length === 0) {
-        setSourceErrors([{ name: 'Configurație', message: "Nicio sursă de date nu este configurată." }]);
-        setLoading(false);
-        return;
+      // 1. Try fetching from Supabase FIRST
+      const isDbConnected = await checkSupabaseConnection();
+      
+      if (isDbConnected) {
+          setLoadingMessage('Se descarcă datele din baza de date Pimpit...');
+          setIsUsingDatabase(true);
+          try {
+              // Fetch all products (Supabase can handle 50k rows in JSON relatively fast, 
+              // but pagination is better long term. For now, we fetch all to keep client filtering working)
+              const { data, error } = await supabase
+                .from('products')
+                .select('*');
+              
+              if (error) throw error;
+              
+              if (data && data.length > 0) {
+                  const mappedProducts = data.map(mapDbToProduct);
+                  setProducts(mappedProducts);
+                  saveProductsToCache(mappedProducts);
+                  setLoading(false);
+                  return; // EXIT EARLY - WE HAVE DB DATA
+              }
+          } catch (err) {
+              console.error("Eroare la citirea din DB, trecem pe fallback (CSV)", err);
+              setSourceErrors(prev => [...prev, { name: 'Baza de Date', message: 'Eroare conexiune DB, se folosesc sursele de rezervă (CSV).' }]);
+          }
       }
 
-      // Helper to update the main state from the ref map
+      // 2. Fallback to CSV Processing (Old Logic) if DB fails or is empty
+      setIsUsingDatabase(false);
+      productsBySourceRef.current.clear();
+      
+      // Initialize map with cache if we are falling back
+      if (cachedData && cachedData.length > 0 && !forceRefresh) {
+          cachedData.forEach(p => {
+             const src = p.Source || 'Unknown';
+             if (!productsBySourceRef.current.has(src)) productsBySourceRef.current.set(src, []);
+             productsBySourceRef.current.get(src)!.push(p);
+          });
+      }
+      
+      setLoadingMessage(`Se inițializează descărcarea din ${allSources.length} surse...`);
+
       const refreshState = () => {
           const allProducts = Array.from(productsBySourceRef.current.values()).flat();
           setProducts(allProducts);
           if (allProducts.length > 0) saveProductsToCache(allProducts);
       };
 
-      // 2. Fire requests for all sources in parallel, but handle them individually (Streaming/Incremental)
       const fetchPromises = allSources.map(async (source) => {
           try {
             const fetchOptions: RequestInit = { cache: 'no-store' };
@@ -101,20 +115,16 @@ export const useProductsData = () => {
                 ? await source.fetcher()
                 : await fetch(source.url!, fetchOptions);
 
-            if (!res.ok) {
-              throw new Error(`HTTP Error ${res.status}`);
-            }
+            if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
             
             let parsedData: any[];
 
             if (source.type === 'xml') {
-              // XML still on main thread (usually smaller or no easy JS parser without deps)
               const text = await res.text();
               parsedData = parseXMLData(text);
             } else if (source.type === 'json') {
               parsedData = await res.json();
             } else { 
-              // CSV processing -> Offload to Web Worker
               let text: string;
               if (source.parserConfig?.encoding) {
                   const buffer = await res.arrayBuffer();
@@ -123,19 +133,13 @@ export const useProductsData = () => {
               } else {
                   text = await res.text();
               }
-              // This is the key optimization:
               parsedData = await parseCsvInWorker(text, source.parserConfig);
             }
 
             const mappedData = await source.map(parsedData);
-            
-            // Apply history logic using the cache snapshot we took at the beginning
             const finalData = applyPriceDropLogic(mappedData, cachedData);
 
-            // Update the map for this specific source, replacing any stale cache data
             productsBySourceRef.current.set(source.name, finalData);
-            
-            // Update UI immediately
             refreshState();
 
           } catch (e) {
@@ -145,9 +149,7 @@ export const useProductsData = () => {
           }
       });
 
-      // Wait for all to finish (successfully or with error) to clear the "Loading" state completely
       await Promise.allSettled(fetchPromises);
-      
       setLoading(false);
       setLoadingMessage('');
   };
@@ -161,6 +163,7 @@ export const useProductsData = () => {
       loading, 
       loadingMessage, 
       sourceErrors, 
+      isUsingDatabase,
       refetch: () => fetchProducts(true) 
   };
 };
