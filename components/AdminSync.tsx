@@ -9,6 +9,8 @@ const AdminSync: React.FC = () => {
   const [syncing, setSyncing] = useState(false);
   const [progress, setProgress] = useState('');
   const [log, setLog] = useState<string[]>([]);
+  const [duplicateReport, setDuplicateReport] = useState<string[]>([]);
+  const [showDuplicates, setShowDuplicates] = useState(false);
 
   const addLog = (msg: string) => setLog(prev => [`${new Date().toLocaleTimeString()} - ${msg}`, ...prev]);
 
@@ -19,39 +21,51 @@ const AdminSync: React.FC = () => {
     }
 
     setSyncing(true);
+    setDuplicateReport([]); // Reset report
+    setShowDuplicates(false);
     setProgress('Începe sincronizarea...');
     addLog(`Pregătesc ${products.length} produse pentru baza de date...`);
 
     try {
         // 1. Transform data
-        // mapProductToDb now ensures part_number is always a string and trimmed
         const rawDbRows = products.map(mapProductToDb);
         
         // 1.1 Deduplicate rows based on part_number
         const uniqueRowsMap = new Map();
-        let duplicateCount = 0;
+        const duplicatesLog: string[] = [];
 
         rawDbRows.forEach(row => {
             if (row.part_number) {
                 // Check if we already have this part number
                 if (uniqueRowsMap.has(row.part_number)) {
-                    duplicateCount++;
+                    const existing = uniqueRowsMap.get(row.part_number);
+                    
+                    const oldSource = existing.metadata?.source || 'Necunoscut';
+                    const newSource = row.metadata?.source || 'Necunoscut';
+                    
+                    // Log details about the collision
+                    duplicatesLog.push(
+                        `COD: "${row.part_number}" | ELIMINAT: ${oldSource} (${existing.price} RON) -> PĂSTRAT: ${newSource} (${row.price} RON)`
+                    );
                 }
-                // Overwrite: If duplicate exists, we keep the last one found (usually from a higher priority source if sorted, or just random)
+                // Overwrite: Last one wins logic
                 uniqueRowsMap.set(row.part_number, row);
             }
         });
         
         const dbRows = Array.from(uniqueRowsMap.values());
+        const duplicateCount = duplicatesLog.length;
+        
+        setDuplicateReport(duplicatesLog);
         
         if (duplicateCount > 0) {
-            addLog(`Corecție date: S-au eliminat ${duplicateCount} coduri duplicate (ex: 123 vs "123").`);
+            addLog(`Corecție date: S-au detectat și comasat ${duplicateCount} coduri duplicate.`);
             addLog(`Total produse unice de trimis: ${dbRows.length}.`);
         } else {
             addLog(`Date curate: Toate cele ${dbRows.length} produse sunt unice.`);
         }
         
-        // 2. Batch upload (Supabase accepts max request sizes, safer to batch 1000 rows)
+        // 2. Batch upload
         const BATCH_SIZE = 500;
         const totalBatches = Math.ceil(dbRows.length / BATCH_SIZE);
         let hasErrors = false;
@@ -75,7 +89,7 @@ const AdminSync: React.FC = () => {
                      addLog("SOLUȚIE: Mergi în Supabase -> SQL Editor și rulează scriptul de creare a tabelului.");
                      setSyncing(false);
                      hasErrors = true;
-                     break; // Stop syncing immediately
+                     break;
                 } else if (error.code === '42501') {
                      addLog("CRITIC: Permisiune refuzată (RLS).");
                      addLog("SOLUȚIE: Rulează scriptul SQL pentru politici (Policies).");
@@ -125,7 +139,7 @@ const AdminSync: React.FC = () => {
             <p>Produse disponibile în memorie: <strong className="text-blue-600">{products.length.toLocaleString()}</strong></p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-4 mb-4">
+        <div className="flex flex-col sm:flex-row gap-4 mb-4 items-center">
             <button
                 onClick={handleSync}
                 disabled={syncing || loading}
@@ -137,7 +151,27 @@ const AdminSync: React.FC = () => {
             >
                 {syncing ? 'Se sincronizează...' : 'SYNC TO DATABASE'}
             </button>
+            
+            {duplicateReport.length > 0 && !syncing && (
+                <button 
+                    onClick={() => setShowDuplicates(!showDuplicates)}
+                    className="text-sm text-orange-600 underline hover:text-orange-800"
+                >
+                    {showDuplicates ? 'Ascunde lista duplicatelor' : `Vezi ${duplicateReport.length} duplicate eliminate`}
+                </button>
+            )}
         </div>
+
+        {showDuplicates && duplicateReport.length > 0 && (
+            <div className="mb-4 p-4 bg-orange-50 border border-orange-200 rounded-md max-h-60 overflow-y-auto">
+                <h4 className="font-bold text-orange-800 mb-2 sticky top-0 bg-orange-50">Raport Duplicate (Ultimul câștigă):</h4>
+                <ul className="text-xs font-mono text-gray-700 space-y-1">
+                    {duplicateReport.map((line, idx) => (
+                        <li key={idx} className="border-b border-orange-100 pb-1">{line}</li>
+                    ))}
+                </ul>
+            </div>
+        )}
 
         {progress && (
             <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4 overflow-hidden">
