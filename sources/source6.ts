@@ -1,11 +1,12 @@
+
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
 
 const map = async (data: Product[]): Promise<Product[]> => {
   const initialProducts = data
-    // RULE: Process only items that are likely wheels (have wheel-specific data like BoltCirlce).
-    // This replaces the previous, incorrect filter on ProductGroupId which was selecting tyres.
-    .filter(p => p && p.ArticleId && p.BoltCirlce)
+    // RULE: Relaxed filter. We check for ArticleId. 
+    // Removed strict check for 'BoltCirlce' as Dirt wheels often miss this field.
+    .filter(p => p && p.ArticleId)
     .map(p => {
       // Price Calculation: (((((pret achizitie * 4)+1080)*1.21)*1.4)/4)*0.48
       const purchasePriceStr = String(p.Price || '0').replace(',', '.');
@@ -13,8 +14,10 @@ const map = async (data: Product[]): Promise<Product[]> => {
       const calculatedPrice = Math.round((((((purchasePrice * 4) + 1080) * 1.21) * 1.4) / 4) * 0.48);
 
       // PCD combination from 'Number of bolts' and 'BoltCirlce'
+      // We check both spellings 'BoltCirlce' (API typo) and 'BoltCircle' (Correct)
       const numberOfBolts = String(p['Number of bolts'] || '').trim();
-      const boltCircle = String(p.BoltCirlce || '').trim();
+      const boltCircleRaw = p.BoltCirlce || p.BoltCircle || '';
+      const boltCircle = String(boltCircleRaw).trim();
       const pcd = (numberOfBolts && boltCircle) ? `${numberOfBolts}x${boltCircle}` : '';
 
       // Image URL is constructed from ImageId, as seen in the API response.

@@ -1,3 +1,4 @@
+
 // This is a server-side file and will not be sent to the browser.
 // This configures the function to run on Vercel's Edge Runtime.
 export const config = {
@@ -5,10 +6,8 @@ export const config = {
 };
 
 // --- Updated Target URL based on API documentation ---
-// The previous URL '/api/PriceList' resulted in a 404 Not Found error.
-// The documentation specifies '/api/Articles' for fetching product data.
-// We are including alloy and steel rims as this source provides wheel data.
-const DATA_URL = 'https://api.statusfalgar.se/api/Articles?IncludeAlloyRims=true&IncludeSteelRims=true'; 
+// Added IncludeDirtRims=true to fetch the missing "Dirt" product line.
+const DATA_URL = 'https://api.statusfalgar.se/api/Articles?IncludeAlloyRims=true&IncludeSteelRims=true&IncludeDirtRims=true'; 
 const USER_AGENT = 'Pimpit-B2B-Catalog-Proxy/1.3'; // Version bump
 
 /**

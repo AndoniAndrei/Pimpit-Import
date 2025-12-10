@@ -1,14 +1,11 @@
+
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
 
 const map = async (data: Product[]): Promise<Product[]> => {
   const initialProducts = data
     .filter(p => p && p.Articlecode && String(p.Articlecode).trim() !== '')
-    .filter(p => {
-        // Rule: Exclude "dirt" products from this source ONLY.
-        const combinedSearchString = `${p.Brand || ''} ${p.Model || ''} ${p.Description || ''}`.toLowerCase();
-        return !combinedSearchString.includes('dirt');
-    })
+    // REMOVED: The filter excluding 'dirt' products has been removed to allow all inventory.
     .map(p => {
       // Price Calculation: ((((pret de achizitie*4)*1.21)*1.4)*5)/4
       const purchasePriceStr = String(p['Nett-price'] || '0').replace(',', '.');
