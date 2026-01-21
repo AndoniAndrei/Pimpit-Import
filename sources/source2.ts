@@ -4,15 +4,17 @@ import { normalizeProductAttributes, getProp } from '../utils/productUtils';
 
 const map = async (data: any[]): Promise<Product[]> => {
   const initialProducts = data
-    .filter(p => p && (getProp(p, 'UID') || getProp(p, 'ID')))
+    .filter(p => p && (getProp(p, 'UID') || getProp(p, 'ID') || getProp(p, 'BRAND')))
     .map(p => {
-      const priceBaseStr = String(getProp(p, 'PRICE') || getProp(p, 'PRET') || '0').replace(',', '.');
+      const priceBaseStr = String(getProp(p, 'PRICE') || getProp(p, 'PRET') || getProp(p, 'NET') || '0').replace(',', '.');
       const priceBase = parseFloat(priceBaseStr) || 0;
       
       // Formula: (((((M cell value *4)+80)*1.21)*1.43)/4)*6
-      const calculatedPrice = Math.round((((((priceBase * 4) + 80) * 1.21) * 1.43) / 4) * 6);
+      const calculatedPrice = priceBase > 0 
+        ? Math.round((((((priceBase * 4) + 80) * 1.21) * 1.43) / 4) * 6)
+        : 0;
       
-      const brand = String(getProp(p, 'BRAND') || '').trim();
+      const brand = String(getProp(p, 'BRAND') || getProp(p, 'PRODUCATOR') || 'Unknown').trim();
       const design = String(getProp(p, 'DESIGN') || getProp(p, 'MODEL') || '').trim();
       const colour = String(getProp(p, 'COLOUR') || getProp(p, 'CULOARE') || '').trim();
       const holes = String(getProp(p, 'HOLES') || '').trim();
@@ -22,7 +24,7 @@ const map = async (data: any[]): Promise<Product[]> => {
       const imageUrl = getProp(p, 'IMG') || getProp(p, 'IMAGE') || getProp(p, 'URL');
 
       const product: Product = {
-        PartNumber: getProp(p, 'UID') || getProp(p, 'ID'),
+        PartNumber: String(getProp(p, 'UID') || getProp(p, 'ID') || Math.random().toString(36).substr(2, 9)),
         Brand: brand,
         Model: design,
         Finish: colour,
@@ -53,8 +55,5 @@ export const source2: DataSource = {
   name: 'Sursa 2',
   url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTq1-FVmTlr588SwWJHqpPg9R9dW2M60QjR5bFmP20Wp-q5T0b1gc4krXy0b0ePi8_fkBc39ea8RbPS/pub?output=csv',
   type: 'csv',
-  parserConfig: {
-    requiredHeaders: ['uid', 'brand', 'price'],
-  },
   map,
 };

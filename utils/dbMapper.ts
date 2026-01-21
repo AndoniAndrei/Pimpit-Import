@@ -1,7 +1,6 @@
 
 import { Product } from '../types';
 
-// Converts an App Product (PascalCase) to a Database Row (snake_case)
 export const mapProductToDb = (p: Product) => {
   const safePrice = Number.isFinite(p.Price) ? p.Price : 0;
   const safeOldPrice = Number.isFinite(p.OldPrice) ? p.OldPrice : null;
@@ -9,21 +8,21 @@ export const mapProductToDb = (p: Product) => {
 
   return {
     part_number: String(p.PartNumber || '').trim(),
-    brand: p.Brand,
-    model: p.Model,
-    part_description: p.PartDescription,
+    brand: String(p.Brand || 'Unknown').trim(),
+    model: String(p.Model || '').trim(),
+    part_description: String(p.PartDescription || '').trim(),
     price: safePrice,
     old_price: safeOldPrice,
     stock: safeStock,
-    image_url: p.ImageUrl,
-    source_file: p.Source, 
+    image_url: p.ImageUrl || null,
+    source_file: p.Source || 'Unknown', 
     
     size: p.Size ? String(p.Size) : null,
     width: p.Width ? String(p.Width) : null,
     pcd: p.PCD ? String(p.PCD) : null,
-    et_offset: p.Offset ? String(p.Offset) : null, // Matches SQL 'et_offset'
-    finish: p.Finish,
-    product_type: p.ProductType,
+    et_offset: p.Offset ? String(p.Offset) : null, // Fixed: et_offset instead of offset
+    finish: p.Finish || null,
+    product_type: p.ProductType || 'Jante',
     
     metadata: {
         ean: p.EAN,
@@ -31,7 +30,7 @@ export const mapProductToDb = (p: Product) => {
         load: p.Load,
         weight: p.Weight,
         description: p.Description,
-        image_urls: p.ImageUrls,
+        image_urls: p.ImageUrls || [],
         is_winter_approved: p.IsWinterApproved,
         on_the_water_stock: p.OnTheWaterStock,
         youtube_url: p.YoutubeUrl,
@@ -42,7 +41,6 @@ export const mapProductToDb = (p: Product) => {
   };
 };
 
-// Converts a Database Row (snake_case) back to App Product (PascalCase)
 export const mapDbToProduct = (row: any): Product => {
   const metadata = row.metadata || {};
   
@@ -61,7 +59,7 @@ export const mapDbToProduct = (row: any): Product => {
     Size: row.size,
     Width: row.width,
     PCD: row.pcd,
-    Offset: row.et_offset, // Maps back from 'et_offset'
+    Offset: row.et_offset, // Map back from et_offset
     Finish: row.finish,
     ProductType: row.product_type,
     
