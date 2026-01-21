@@ -1,57 +1,49 @@
 
 import { DataSource, Product } from '../types';
-import { normalizeProductAttributes } from '../utils/productUtils';
+import { normalizeProductAttributes, getProp } from '../utils/productUtils';
 
-// Maps data from the first source to the unified product structure
-const map = async (data: Product[]): Promise<Product[]> => {
+const map = async (data: any[]): Promise<Product[]> => {
   const initialProducts = data
-    .filter(p => p && p['PartNumber'] && String(p['PartNumber']).trim() !== '')
+    .filter(p => p && getProp(p, 'PartNumber') && String(getProp(p, 'PartNumber')).trim() !== '')
     .map(p => {
-      const priceStr = String(p['Pret client in lei/buc'] || '0');
-      let cleanValue = priceStr.replace(/[^0-9.,-]/g, '').replace(/\./g, '').replace(',', '.');
-      const price = parseFloat(cleanValue) || 0;
+      const priceStr = String(getProp(p, 'Pret client in lei/buc') || '0');
+      let cleanPrice = priceStr.replace(/[^0-9.,-]/g, '').replace(/\./g, '').replace(',', '.');
+      const price = parseFloat(cleanPrice) || 0;
 
-      const imageUrls = ['Image URL', 'Image URL 1', 'Image URL 2', 'Image URL 3', 'Image URL 4']
-        .map(key => p[key])
-        .filter((url): url is string => url && typeof url === 'string' && url.trim().startsWith('http'));
+      const imageUrls = [
+          getProp(p, 'Image URL'), 
+          getProp(p, 'Image URL 1'), 
+          getProp(p, 'Image URL 2'), 
+          getProp(p, 'Image URL 3'), 
+          getProp(p, 'Image URL 4')
+      ].filter((url): url is string => url && typeof url === 'string' && url.trim().startsWith('http'));
 
-      // Extract ET/Offset from PartDescription if not already present
-      const description = String(p['PartDescription'] || '');
-      // Regex to find ET followed by numbers, optionally negative or a range (e.g., ET40, ET-10, ET20-35)
+      const description = String(getProp(p, 'PartDescription') || '');
       const etMatch = description.match(/\bET(-?\d+(?:-\d+)?)\b/i);
       const extractedOffset = etMatch ? etMatch[1] : undefined;
 
-      // Construct a new product object with only the necessary fields
-      // to reduce memory footprint, avoiding the `...p` spread.
       const product: Product = {
-        // Core identifiers from source
-        PartNumber: p['PartNumber'],
-        PartDescription: p['PartDescription'],
-        Brand: p['Brand'],
-        EAN: p['EAN'],
-        Model: p['Model'],
-
-        // Specifications from source
-        Size: p['Size'],
-        Width: p['Width'],
-        PCD: p['PCD'],
-        CB: p['CB'],
-        Finish: p['Finish'],
-        Load: p['Load'],
-        Weight: p['Weight'],
-        Description: p['Description'],
-        next_delivery: p['next_delivery'],
-        
-        // Media and links that might exist in source
-        ThreeSixtyImageUrl: p['ThreeSixtyImageUrl'],
-        TuvUrl: p['TuvUrl'],
-        YoutubeUrl: p['YoutubeUrl'],
-        
-        // Calculated and mapped fields
-        Offset: p['Offset'] || extractedOffset, // Prioritize existing Offset column
+        PartNumber: getProp(p, 'PartNumber'),
+        PartDescription: getProp(p, 'PartDescription'),
+        Brand: getProp(p, 'Brand'),
+        EAN: getProp(p, 'EAN'),
+        Model: getProp(p, 'Model'),
+        Size: getProp(p, 'Size'),
+        Width: getProp(p, 'Width'),
+        PCD: getProp(p, 'PCD'),
+        CB: getProp(p, 'CB'),
+        Finish: getProp(p, 'Finish'),
+        Load: getProp(p, 'Load'),
+        Weight: getProp(p, 'Weight'),
+        Description: getProp(p, 'Description'),
+        next_delivery: getProp(p, 'next_delivery'),
+        ThreeSixtyImageUrl: getProp(p, 'ThreeSixtyImageUrl'),
+        TuvUrl: getProp(p, 'TuvUrl'),
+        YoutubeUrl: getProp(p, 'YoutubeUrl'),
+        Offset: getProp(p, 'Offset') || extractedOffset,
         Price: price,
-        Stock: parseInt(p['7001'], 10) || 0,
-        OnTheWaterStock: parseInt(p['On the water'], 10) || 0,
+        Stock: parseInt(String(getProp(p, '7001')), 10) || 0,
+        OnTheWaterStock: parseInt(String(getProp(p, 'On the water')), 10) || 0,
         ImageUrl: imageUrls[0],
         ImageUrls: imageUrls,
         Source: 'Sursa 1',
@@ -61,7 +53,6 @@ const map = async (data: Product[]): Promise<Product[]> => {
       return product;
     });
 
-  // Just normalize product attributes
   return initialProducts.map(product => normalizeProductAttributes(product));
 };
 
