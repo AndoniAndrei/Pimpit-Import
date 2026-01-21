@@ -2,43 +2,42 @@
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes, getProp } from '../utils/productUtils';
 
-// Maps data from the second source, calculates price, and unifies structure
 const map = async (data: any[]): Promise<Product[]> => {
   const initialProducts = data
-    .filter(p => p && getProp(p, 'UID') && String(getProp(p, 'UID')).trim() !== '')
+    .filter(p => p && (getProp(p, 'UID') || getProp(p, 'ID')))
     .map(p => {
-      const priceBaseStr = String(getProp(p, 'PRICE') || '0').replace(',', '.');
+      const priceBaseStr = String(getProp(p, 'PRICE') || getProp(p, 'PRET') || '0').replace(',', '.');
       const priceBase = parseFloat(priceBaseStr) || 0;
       
-      // -> (((((M cell value *4)+80)*1.21)*1.43)/4)*6 -> rezultatul este pretul in lei afisat pe platforma, rotunjeste.
+      // Formula: (((((M cell value *4)+80)*1.21)*1.43)/4)*6
       const calculatedPrice = Math.round((((((priceBase * 4) + 80) * 1.21) * 1.43) / 4) * 6);
       
       const brand = String(getProp(p, 'BRAND') || '').trim();
-      const design = String(getProp(p, 'DESIGN') || '').trim();
-      const colour = String(getProp(p, 'COLOUR') || '').trim();
+      const design = String(getProp(p, 'DESIGN') || getProp(p, 'MODEL') || '').trim();
+      const colour = String(getProp(p, 'COLOUR') || getProp(p, 'CULOARE') || '').trim();
       const holes = String(getProp(p, 'HOLES') || '').trim();
       const pcdVal = String(getProp(p, 'PCD') || '').trim();
       const pcd = (holes && pcdVal) ? `${holes}x${pcdVal}` : pcdVal;
 
-      const imageUrl = getProp(p, 'IMG');
+      const imageUrl = getProp(p, 'IMG') || getProp(p, 'IMAGE') || getProp(p, 'URL');
 
       const product: Product = {
-        PartNumber: getProp(p, 'UID'),
+        PartNumber: getProp(p, 'UID') || getProp(p, 'ID'),
         Brand: brand,
         Model: design,
         Finish: colour,
         PartDescription: `${brand} ${design} ${colour}`.trim().replace(/\s+/g, ' '),
         Width: getProp(p, 'WIDTH'),
-        Size: getProp(p, 'DIAMETER'),
-        Offset: getProp(p, 'ET'),
+        Size: getProp(p, 'DIAMETER') || getProp(p, 'INCH') || getProp(p, 'SIZE'),
+        Offset: getProp(p, 'ET') || getProp(p, 'OFFSET'),
         PCD: pcd,
-        CB: getProp(p, 'CB'),
+        CB: getProp(p, 'CB') || getProp(p, 'HUB'),
         Load: getProp(p, 'LOAD'),
-        Weight: getProp(p, 'WEIGHT(KG)'),
+        Weight: getProp(p, 'WEIGHT'),
         ThreeSixtyImageUrl: getProp(p, '360 IMAGE'),
         ImageUrl: imageUrl,
         ImageUrls: imageUrl ? [imageUrl] : [],
-        Stock: parseInt(String(getProp(p, 'STOCK')), 10) || 0,
+        Stock: parseInt(String(getProp(p, 'STOCK') || '0'), 10) || 0,
         Price: calculatedPrice,
         Source: 'Sursa 2',
         ProductType: 'Jante',

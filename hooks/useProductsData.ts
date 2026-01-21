@@ -15,10 +15,10 @@ export const useProductsData = () => {
   const [isUsingDatabase, setIsUsingDatabase] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
-  // Load products from DB (Fast)
   const loadFromSupabase = async () => {
       try {
-          const { count } = await supabase.from('products').select('*', { count: 'exact', head: true });
+          const { count, error: countError } = await supabase.from('products').select('*', { count: 'exact', head: true });
+          if (countError) throw countError;
           const totalRows = count || 0;
           
           if (totalRows === 0) return false;
@@ -32,26 +32,17 @@ export const useProductsData = () => {
 
           while (hasMore) {
               const to = from + PAGE_SIZE - 1;
-              const { data, error } = await supabase.from('products').select('*').range(from, to);
+              const { data, error } = await supabase.from('products').select('*').range(from, to).order('brand', { ascending: true });
               
               if (error) throw error;
               
               if (data && data.length > 0) {
                   const mappedBatch = data.map(mapDbToProduct);
                   allDbProducts = allDbProducts.concat(mappedBatch);
-                  
-                  setProducts(prev => {
-                      if (from === 0) return mappedBatch; 
-                      return [...prev, ...mappedBatch];
-                  });
-
+                  setProducts(prev => from === 0 ? mappedBatch : [...prev, ...mappedBatch]);
                   setLoadingMessage(`Se încarcă catalogul... (${allDbProducts.length} din ${totalRows})`);
-                  
-                  if (data.length < PAGE_SIZE) {
-                      hasMore = false;
-                  } else {
-                      from += PAGE_SIZE;
-                  }
+                  if (data.length < PAGE_SIZE) hasMore = false;
+                  else from += PAGE_SIZE;
               } else {
                   hasMore = false;
               }
@@ -68,115 +59,86 @@ export const useProductsData = () => {
   const performBackgroundSync = async () => {
       if (isSyncing) return;
       setIsSyncing(true);
-      console.log("Starting Background Sync...");
+      const errors: SourceError[] = [];
+      const allMappedProducts: Product[] = [];
 
       try {
-        const processedProducts: Product[] = [];
-        const errors: SourceError[] = [];
-        
         for (const source of allSources) {
-            console.log(`Syncing ${source.name}...`);
             try {
-                const fetchOptions: RequestInit = { cache: 'no-store' };
-                const res = source.fetcher ? await source.fetcher() : await fetch(source.url!, fetchOptions);
+                const res = source.fetcher ? await source.fetcher() : await fetch(source.url!, { cache: 'no-store' });
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
                 let parsedData: any[];
                 if (source.type === 'xml') {
-                    const text = await res.text();
-                    parsedData = parseXMLData(text);
+                    parsedData = parseXMLData(await res.text());
                 } else if (source.type === 'json') {
                     parsedData = await res.json();
                 } else {
                     let text: string;
                     if (source.parserConfig?.encoding) {
-                         const buffer = await res.arrayBuffer();
-                         const decoder = new TextDecoder(source.parserConfig.encoding);
-                         text = decoder.decode(buffer);
+                         text = new TextDecoder(source.parserConfig.encoding).decode(await res.arrayBuffer());
                     } else {
                          text = await res.text();
                     }
                     parsedData = await parseCsvInWorker(text, source.parserConfig);
                 }
                 const mapped = await source.map(parsedData);
-                console.log(`${source.name}: Found ${mapped.length} products.`);
-                processedProducts.push(...mapped);
+                allMappedProducts.push(...mapped);
             } catch (e) {
-                console.error(`Sync error source ${source.name}`, e);
+                console.error(`Sync error: ${source.name}`, e);
                 errors.push({ name: source.name, message: e instanceof Error ? e.message : 'Eroare necunoscută' });
             }
         }
 
         setSourceErrors(errors);
 
-        // Lower threshold slightly (8k) to be safe but still protective
-        if (processedProducts.length < 8000) {
-            console.error(`Safety Abort: Only ${processedProducts.length} products found. Aborting sync to preserve data.`);
-            throw new Error("Sincronizare eșuată: Prea puține produse găsite.");
+        // Safeguard: Only update DB if we have a significant portion of the catalog
+        // Assuming normal catalog is ~10k+ items, 5k is a safe "halfway" point for critical failure detection.
+        if (allMappedProducts.length < 5000) {
+            console.error("Sync aborted: Data volume too low. Critical source failure likely.");
+            return;
         }
 
-        console.log(`Data sync successful (${processedProducts.length} items). Updating database...`);
-        
         const { error: truncError } = await supabase.rpc('truncate_products');
         if (truncError) throw truncError;
 
-        const dbRows = processedProducts.map(mapProductToDb);
-        const BATCH_SIZE = 250; 
-        
+        const dbRows = allMappedProducts.map(mapProductToDb);
+        const BATCH_SIZE = 500; 
         for (let i = 0; i < dbRows.length; i += BATCH_SIZE) {
             const batch = dbRows.slice(i, i + BATCH_SIZE);
-            const { error: insError } = await supabase.from('products').insert(batch);
-            if (insError) {
-                console.error("Batch insert error at index " + i, insError);
-            }
+            await supabase.from('products').insert(batch);
         }
 
-        await supabase.from('sync_status').upsert({ id: 1, last_synced_at: new Date().toISOString(), is_syncing: false });
-        
-        console.log("Sync finished. Refreshing view...");
-        setProducts([]); 
+        await supabase.from('sync_status').upsert({ id: 1, last_synced_at: new Date().toISOString() });
         await loadFromSupabase();
 
       } catch (e) {
-          console.error("Sync Failed", e);
+          console.error("Sync Process Failed:", e);
       } finally {
           setIsSyncing(false);
       }
   };
 
-  const initData = async () => {
-      setLoading(true);
-      const isConnected = await checkSupabaseConnection();
-      
-      if (isConnected) {
-          const { data: statusData } = await supabase.from('sync_status').select('*').eq('id', 1).single();
-          const lastSynced = statusData?.last_synced_at ? new Date(statusData.last_synced_at).getTime() : 0;
-          const now = Date.now();
-          const hoursSinceSync = (now - lastSynced) / (1000 * 60 * 60);
-
-          const hasData = await loadFromSupabase();
-
-          // Sync if data is older than 2 hours or missing
-          if (!hasData || hoursSinceSync > 2) {
-              if (!hasData) setLoadingMessage("Se inițializează catalogul pentru prima dată...");
-              performBackgroundSync();
-          }
-      } else {
-          setSourceErrors([{ name: 'System', message: 'Nu s-a putut conecta la baza de date.'}]);
-          setLoading(false);
-      }
-  };
-
   useEffect(() => {
-    initData();
+    const init = async () => {
+        const isConnected = await checkSupabaseConnection();
+        if (!isConnected) {
+            setSourceErrors([{ name: 'Sistem', message: 'Conexiunea la baza de date a eșuat.' }]);
+            setLoading(false);
+            return;
+        }
+        
+        const { data: status } = await supabase.from('sync_status').select('last_synced_at').eq('id', 1).single();
+        const lastSynced = status?.last_synced_at ? new Date(status.last_synced_at).getTime() : 0;
+        const needsSync = (Date.now() - lastSynced) > (1000 * 60 * 60 * 2); // 2 hours
+
+        const hasData = await loadFromSupabase();
+        if (!hasData || needsSync) {
+            performBackgroundSync();
+        }
+    };
+    init();
   }, []);
 
-  return { 
-      products, 
-      loading, 
-      loadingMessage, 
-      sourceErrors, 
-      isUsingDatabase,
-      isSyncing
-  };
+  return { products, loading, loadingMessage, sourceErrors, isUsingDatabase, isSyncing };
 };
