@@ -3,10 +3,6 @@ import { Product } from '../types';
 
 // Converts an App Product (PascalCase) to a Database Row (snake_case)
 export const mapProductToDb = (p: Product) => {
-  // We allow duplicates now, so part_number is just data, not a key.
-  
-  // Robust validation for numeric fields
-  // If calculation resulted in NaN or Infinity, default to 0 to prevent DB errors
   const safePrice = Number.isFinite(p.Price) ? p.Price : 0;
   const safeOldPrice = Number.isFinite(p.OldPrice) ? p.OldPrice : null;
   const safeStock = Number.isFinite(p.Stock) ? p.Stock : 0;
@@ -20,17 +16,15 @@ export const mapProductToDb = (p: Product) => {
     old_price: safeOldPrice,
     stock: safeStock,
     image_url: p.ImageUrl,
-    source_file: p.Source, // Trace where it came from
+    source_file: p.Source, 
     
-    // Indexed filters
     size: p.Size ? String(p.Size) : null,
     width: p.Width ? String(p.Width) : null,
     pcd: p.PCD ? String(p.PCD) : null,
-    offset: p.Offset ? String(p.Offset) : null,
+    et_offset: p.Offset ? String(p.Offset) : null, // Matches SQL 'et_offset'
     finish: p.Finish,
     product_type: p.ProductType,
     
-    // Everything else goes into metadata
     metadata: {
         ean: p.EAN,
         cb: p.CB,
@@ -53,7 +47,7 @@ export const mapDbToProduct = (row: any): Product => {
   const metadata = row.metadata || {};
   
   return {
-    id: row.id, // Keep the DB ID
+    id: row.id,
     PartNumber: row.part_number,
     Brand: row.brand,
     Model: row.model,
@@ -67,11 +61,10 @@ export const mapDbToProduct = (row: any): Product => {
     Size: row.size,
     Width: row.width,
     PCD: row.pcd,
-    Offset: row.offset,
+    Offset: row.et_offset, // Maps back from 'et_offset'
     Finish: row.finish,
     ProductType: row.product_type,
     
-    // Spread metadata back to top level
     EAN: metadata.ean,
     CB: metadata.cb,
     Load: metadata.load,
