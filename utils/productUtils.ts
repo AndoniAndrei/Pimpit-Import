@@ -4,15 +4,19 @@ import { Product } from '../types';
 const keysToNormalize: (keyof Product)[] = ['Size', 'Width', 'Offset', 'CB', 'Load', 'Weight'];
 
 /**
- * Helper to get a property from an object regardless of key casing.
- * Useful for CSV/JSON data from various suppliers.
+ * Helper to get a property from an object regardless of key casing, spaces or special characters.
  */
 export const getProp = (obj: any, targetKey: string): any => {
   if (!obj) return undefined;
+  
+  // 1. Direct match
   if (obj[targetKey] !== undefined) return obj[targetKey];
   
-  const lowerTarget = targetKey.toLowerCase();
-  const foundKey = Object.keys(obj).find(k => k.toLowerCase() === lowerTarget);
+  // 2. Normalized match (lowercase, no spaces)
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const normalizedTarget = normalize(targetKey);
+  
+  const foundKey = Object.keys(obj).find(k => normalize(k) === normalizedTarget);
   return foundKey ? obj[foundKey] : undefined;
 };
 
@@ -22,14 +26,12 @@ export const getProp = (obj: any, targetKey: string): any => {
 export const normalizeProductAttributes = (product: Product): Product => {
   const normalizedProduct = { ...product };
 
-  // Trim all string values first 
   for (const key in normalizedProduct) {
     if (typeof normalizedProduct[key] === 'string') {
       normalizedProduct[key] = String(normalizedProduct[key]).trim();
     }
   }
   
-  // Standardize specific numeric-like fields
   for (const key of keysToNormalize) {
     const value = normalizedProduct[key];
     if (typeof value === 'string' && value) {

@@ -82,7 +82,11 @@ export const useProductsData = () => {
 
       setSourceErrors(errors);
 
-      if (allMappedProducts.length > 100) { // Safely lowered threshold
+      // Only update if we have a significant amount of data to prevent total wipeout on failure
+      const { count: currentCount } = await supabase.from('products').select('*', { count: 'exact', head: true });
+      const minThreshold = currentCount ? Math.floor(currentCount * 0.5) : 1000;
+
+      if (allMappedProducts.length >= minThreshold) {
           const { error: truncError } = await supabase.rpc('truncate_products');
           if (truncError) console.error("Truncate failed:", truncError);
 
@@ -94,6 +98,8 @@ export const useProductsData = () => {
 
           await supabase.from('sync_status').upsert({ id: 1, last_synced_at: new Date().toISOString() });
           await loadFromSupabase();
+      } else {
+          console.warn(`Sync aborted: Only ${allMappedProducts.length} products found. Expected at least ${minThreshold}.`);
       }
       setIsSyncing(false);
   };
@@ -107,7 +113,7 @@ export const useProductsData = () => {
         }
         const { data: status } = await supabase.from('sync_status').select('last_synced_at').eq('id', 1).single();
         const lastSynced = status?.last_synced_at ? new Date(status.last_synced_at).getTime() : 0;
-        const needsSync = (Date.now() - lastSynced) > (1000 * 60 * 60 * 2);
+        const needsSync = (Date.now() - lastSynced) > (1000 * 60 * 60 * 1); // Every 1h
         const hasData = await loadFromSupabase();
         if (!hasData || needsSync) performBackgroundSync();
     };

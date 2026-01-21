@@ -9,9 +9,13 @@ const map = async (data: any): Promise<Product[]> => {
   const initialProducts = articles
     .filter(p => p && (getProp(p, 'ArticleId') || getProp(p, 'Id')))
     .map(p => {
-      const rawPrice = getProp(p, 'Price') || getProp(p, 'NettPrice') || 0;
+      const rawPrice = getProp(p, 'NettPrice') || getProp(p, 'Price') || 0;
       const purchasePrice = parseFloat(String(rawPrice).replace(',', '.')) || 0;
-      const calculatedPrice = Math.round((((((purchasePrice * 4) + 1080) * 1.21) * 1.4) / 4) * 0.48);
+      
+      // Formula spec: (((((M cell value *4)+1080)*1.21)*1.4)/4)*0.48
+      const calculatedPrice = purchasePrice > 0 
+        ? Math.round((((((purchasePrice * 4) + 1080) * 1.21) * 1.4) / 4) * 0.48)
+        : 0;
 
       const numberOfBolts = String(getProp(p, 'Number of bolts') || getProp(p, 'NumberOfBolts') || '').trim();
       const boltCircle = String(getProp(p, 'BoltCirlce') || getProp(p, 'BoltCircle') || '').trim();

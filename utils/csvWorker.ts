@@ -2,12 +2,8 @@
 /* global importScripts, self */
 declare var Papa: any;
 
-/**
- * --- Main Thread Interface ---
- */
 export const parseCsvInWorker = (text: string, config: any): Promise<any[]> => {
     return new Promise((resolve, reject) => {
-        // Fallback for environments where Web Workers are tricky
         if (typeof window !== 'undefined' && (window as any).Papa) {
             try {
                 const result = internalParseCSV((window as any).Papa, text, config);
@@ -38,14 +34,35 @@ export const parseCsvInWorker = (text: string, config: any): Promise<any[]> => {
                 const allRows = parseResult.data;
                 if (!allRows || allRows.length === 0) return [];
 
-                // Find header row: first row with keywords or just the first row with > 2 columns
-                const keywords = ['brand', 'sku', 'pret', 'price', 'uid', 'article', 'model', 'producator'];
-                let headerIdx = allRows.findIndex(row => {
-                    const r = row.map(c => String(c || '').toLowerCase());
-                    return keywords.some(kw => r.some(cell => cell.includes(kw)));
-                });
+                // 1. Strict Column Mapping (e.g. Source 4)
+                if (config.columnMapping) {
+                    const headers = config.columnMapping;
+                    return allRows.slice(1).map(row => {
+                        const obj = {};
+                        headers.forEach((h, i) => { if(h && i < row.length) obj[h] = row[i]; });
+                        return obj;
+                    }).filter(o => Object.values(o).some(v => v));
+                }
 
-                if (headerIdx === -1) headerIdx = allRows.findIndex(row => row.length > 2);
+                // 2. Header Finding Logic
+                let headerIdx = -1;
+                if (config.requiredHeaders) {
+                    const req = config.requiredHeaders.map(h => h.toLowerCase());
+                    headerIdx = allRows.findIndex(row => {
+                        const r = row.map(c => String(c || '').toLowerCase().trim());
+                        return req.every(h => r.includes(h)) || (req.length > 3 && req.slice(0, 3).every(h => r.includes(h)));
+                    });
+                }
+
+                if (headerIdx === -1) {
+                    const keywords = ['brand', 'sku', 'price', 'pret', 'artnr', 'article'];
+                    headerIdx = allRows.findIndex(row => {
+                        const r = row.map(c => String(c || '').toLowerCase());
+                        return keywords.some(kw => r.some(cell => cell.includes(kw)));
+                    });
+                }
+
+                if (headerIdx === -1) headerIdx = allRows.findIndex(row => row.length > 3);
                 if (headerIdx === -1) headerIdx = 0;
 
                 const headers = allRows[headerIdx].map(h => String(h || '').trim());
@@ -53,7 +70,7 @@ export const parseCsvInWorker = (text: string, config: any): Promise<any[]> => {
 
                 return dataRows.map(row => {
                     const obj = {};
-                    headers.forEach((h, i) => { if(h) obj[h] = row[i]; });
+                    headers.forEach((h, i) => { if(h && i < row.length) obj[h] = row[i]; });
                     return obj;
                 }).filter(o => Object.values(o).some(v => v));
             }
@@ -82,19 +99,38 @@ function internalParseCSV(Papa: any, text: string, config: any) {
     const allRows = parseResult.data;
     if (!allRows || allRows.length === 0) return [];
 
-    const keywords = ['brand', 'sku', 'pret', 'price', 'uid', 'article', 'model'];
-    let headerIdx = allRows.findIndex((row: any[]) => {
-        const r = row.map(c => String(c || '').toLowerCase());
-        return keywords.some(kw => r.some(cell => cell.includes(kw)));
-    });
+    if (config.columnMapping) {
+        const headers = config.columnMapping;
+        return allRows.slice(1).map(row => {
+            const obj: any = {};
+            headers.forEach((h, i) => { if(h && i < row.length) obj[h] = row[i]; });
+            return obj;
+        }).filter((o: any) => Object.values(o).some(v => v));
+    }
 
-    if (headerIdx === -1) headerIdx = allRows.findIndex((row: any[]) => row.length > 2);
+    let headerIdx = -1;
+    if (config.requiredHeaders) {
+        const req = config.requiredHeaders.map((h: string) => h.toLowerCase());
+        headerIdx = allRows.findIndex((row: any[]) => {
+            const r = row.map(c => String(c || '').toLowerCase().trim());
+            return req.every(h => r.includes(h));
+        });
+    }
+
+    if (headerIdx === -1) {
+        const keywords = ['brand', 'sku', 'price', 'pret'];
+        headerIdx = allRows.findIndex((row: any[]) => {
+            const r = row.map(c => String(c || '').toLowerCase());
+            return keywords.some(kw => r.some(cell => cell.includes(kw)));
+        });
+    }
+
     if (headerIdx === -1) headerIdx = 0;
 
     const headers = allRows[headerIdx].map((h: any) => String(h || '').trim());
     return allRows.slice(headerIdx + 1).map((row: any[]) => {
         const obj: any = {};
-        headers.forEach((h, i) => { if(h) obj[h] = row[i]; });
+        headers.forEach((h, i) => { if(h && i < row.length) obj[h] = row[i]; });
         return obj;
     }).filter((o: any) => Object.values(o).some(v => v));
 }
