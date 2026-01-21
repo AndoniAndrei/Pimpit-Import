@@ -2,50 +2,62 @@
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
 
-const map = async (data: Product[]): Promise<Product[]> => {
-  const initialProducts = data
-    // RULE: Relaxed filter. We check for ArticleId. 
-    // Removed strict check for 'BoltCirlce' as Dirt wheels often miss this field.
-    .filter(p => p && p.ArticleId)
+const map = async (data: any): Promise<Product[]> => {
+  // Status Falgar API can return an array directly or an object with an 'Articles' property
+  const articles = Array.isArray(data) ? data : (data?.Articles || []);
+
+  if (!Array.isArray(articles)) {
+      console.warn("Source 6: Data format is not an array of articles.", data);
+      return [];
+  }
+
+  const initialProducts = articles
+    .filter(p => p && (p.ArticleId || p.Id))
     .map(p => {
-      // Price Calculation: (((((pret achizitie * 4)+1080)*1.21)*1.4)/4)*0.48
-      const purchasePriceStr = String(p.Price || '0').replace(',', '.');
+      // 1. Price Calculation: (((((pret achizitie * 4)+1080)*1.21)*1.4)/4)*0.48
+      const rawPrice = p.Price || p.NettPrice || 0;
+      const purchasePriceStr = String(rawPrice).replace(',', '.');
       const purchasePrice = parseFloat(purchasePriceStr) || 0;
       const calculatedPrice = Math.round((((((purchasePrice * 4) + 1080) * 1.21) * 1.4) / 4) * 0.48);
 
-      // PCD combination from 'Number of bolts' and 'BoltCirlce'
-      // We check both spellings 'BoltCirlce' (API typo) and 'BoltCircle' (Correct)
-      const numberOfBolts = String(p['Number of bolts'] || '').trim();
-      const boltCircleRaw = p.BoltCirlce || p.BoltCircle || '';
+      // 2. PCD logic (handle various API naming inconsistencies)
+      const numberOfBolts = String(p['Number of bolts'] || p.NumberOfBolts || p.Bolts || '').trim();
+      // They often have a typo 'BoltCirlce' in their documentation/API
+      const boltCircleRaw = p.BoltCirlce || p.BoltCircle || p.BoltPattern || '';
       const boltCircle = String(boltCircleRaw).trim();
-      const pcd = (numberOfBolts && boltCircle) ? `${numberOfBolts}x${boltCircle}` : '';
+      const pcd = (numberOfBolts && boltCircle) ? `${numberOfBolts}x${boltCircle}` : boltCircle;
 
-      // Image URL is constructed from ImageId, as seen in the API response.
-      const imageUrl = p.ImageId ? `https://api.statusfalgar.se/api/Images/${p.ImageId}` : undefined;
+      // 3. Brand and Model mapping (resilient to space vs camelCase)
+      const brand = p['Brand Name'] || p.BrandName || p.Brand || 'Unknown Brand';
+      const model = p['Model Name'] || p.ModelName || p.Model || '';
+      const articleText = p['Article Text'] || p.ArticleText || p.Description || '';
 
-      // NOTE: Stock information (QuantityAvailable) is not present in this API endpoint.
-      // It requires a separate call to /api/Stock. For now, stock will be 0.
-      const stock = parseInt(String(p.QuantityAvailable), 10) || 0;
+      // 4. Image URL logic
+      const imageId = p.ImageId || p.MainImageId;
+      const imageUrl = imageId ? `https://api.statusfalgar.se/api/Images/${imageId}` : undefined;
+
+      // 5. Stock logic
+      const stock = parseInt(String(p.QuantityAvailable || p.Stock || 0), 10) || 0;
 
       const product: Product = {
-        PartNumber: p.ArticleId,
-        PartDescription: p['Article Text'],
-        Brand: p['Brand Name'],
-        Model: p['Model Name'],
-        Finish: p.Color,
+        PartNumber: p.ArticleId || p.Id,
+        PartDescription: articleText || `${brand} ${model}`.trim(),
+        Brand: brand,
+        Model: model,
+        Finish: p.Color || p.Finish,
         Width: p.Width,
-        Size: p.Diameter,
+        Size: p.Diameter || p.Size,
         PCD: pcd,
-        Offset: p.offset,
-        CB: p.CenterBore,
-        Load: p.LoadRating,
-        IsWinterApproved: p.IsWinterApproved,
+        Offset: p.offset || p.ET,
+        CB: p.CenterBore || p.CH,
+        Load: p.LoadRating || p.MaxLoad,
+        IsWinterApproved: p.IsWinterApproved === true || String(p.IsWinterApproved).toLowerCase() === 'yes',
         Stock: stock,
         Price: calculatedPrice,
         ImageUrl: imageUrl,
         ImageUrls: imageUrl ? [imageUrl] : [],
         Source: 'Sursa 6',
-        ProductType: 'Jante', // We are filtering for wheels, so this is correct.
+        ProductType: 'Jante',
       };
       
       return product;
@@ -76,8 +88,7 @@ const fetcher = async (): Promise<Response> => {
 
 export const source6: DataSource = {
   name: 'Sursa 6',
-  type: 'json', // The API now returns JSON
+  type: 'json',
   fetcher,
-  // parserConfig is no longer needed for JSON type
   map,
 };

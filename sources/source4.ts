@@ -4,7 +4,16 @@ import { normalizeProductAttributes } from '../utils/productUtils';
 
 const map = async (data: Product[]): Promise<Product[]> => {
   const initialProducts = data
-    .filter(p => p && p['sku'] && String(p['sku']).trim() !== '')
+    .filter(p => {
+        // Basic validation
+        if (!p || !p['sku'] || String(p['sku']).trim() === '') return false;
+
+        // EXCLUSION: Filter out 'Dirt' brand from Felgeo
+        const producer = String(p['producent'] || '').trim().toLowerCase();
+        if (producer.includes('dirt')) return false;
+
+        return true;
+    })
     .map(p => {
       // 1. Price Calculation
       const purchasePriceStr = String(p['cena_zakupu_netto_eur'] || '0').replace(',', '.');
