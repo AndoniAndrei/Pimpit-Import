@@ -1,72 +1,57 @@
 
 import { DataSource, Product } from '../types';
-import { normalizeProductAttributes } from '../utils/productUtils';
+import { normalizeProductAttributes, getProp } from '../utils/productUtils';
 
-const map = async (data: Product[]): Promise<Product[]> => {
+const map = async (data: any[]): Promise<Product[]> => {
   const initialProducts = data
-    .filter(p => p && p.Articlecode && String(p.Articlecode).trim() !== '')
-    // REMOVED: The filter excluding 'dirt' products has been removed to allow all inventory.
+    .filter(p => p && getProp(p, 'Articlecode'))
     .map(p => {
       // Price Calculation: ((((pret de achizitie*4)*1.21)*1.4)*5)/4
-      const purchasePriceStr = String(p['Nett-price'] || '0').replace(',', '.');
+      const purchasePriceStr = String(getProp(p, 'Nett-price') || '0').replace(',', '.');
       const purchasePrice = parseFloat(purchasePriceStr) || 0;
       const calculatedPrice = Math.round(((((purchasePrice * 4) * 1.21) * 1.4) * 5) / 4);
 
-      const imageUrl = p['URL-to-photo'];
+      const imageUrl = getProp(p, 'URL-to-photo');
       const imageUrls = imageUrl ? [imageUrl] : [];
       
-      let brand = String(p.Brand || '').trim();
-      let model = String(p.Model || '').trim();
-      const description = String(p.Description || '').trim();
+      let brand = String(getProp(p, 'Brand') || '').trim();
+      let model = String(getProp(p, 'Model') || '').trim();
+      const description = String(getProp(p, 'Description') || '').trim();
 
-      // --- Data Cleaning and Correction Logic ---
       const combinedSearchString = `${brand} ${model} ${description}`.toLowerCase();
       
-      // Rule 1: Correct 'STW' products
       if (combinedSearchString.includes('stw')) {
         brand = 'ABS';
         model = 'STW 287';
-      }
-      // Rule 2: Correct products mistakenly branded as '355'
-      else if (brand === '355') {
+      } else if (brand === '355') {
         brand = 'ABS';
         model = '355';
-      }
-      // Rule 3: Correct products mistakenly branded as 'AERO'
-      else if (brand.toLowerCase() === 'aero') {
+      } else if (brand.toLowerCase() === 'aero') {
         brand = 'ABS';
         model = 'AERO';
-      }
-      // Rule 4: Correct the specific 'ABS F55' error, making them 'F88'
-      else if (brand === 'ABS F55') {
+      } else if (brand === 'ABS F55') {
         brand = 'ABS';
         model = 'F88';
-      }
-      // Rule 5 (Fallback): If data is still missing, try to extract from description
-      else if ((!brand || !model) && description) {
+      } else if ((!brand || !model) && description) {
           const descriptionParts = description.split(/\s+/);
           if (descriptionParts.length >= 2) {
-              if (!brand) {
-                  brand = descriptionParts[0];
-              }
-              if (!model) {
-                  model = descriptionParts[1];
-              }
+              if (!brand) brand = descriptionParts[0];
+              if (!model) model = descriptionParts[1];
           }
       }
 
       const product: Product = {
-        PartNumber: p.Articlecode,
+        PartNumber: getProp(p, 'Articlecode'),
         Brand: brand,
         Model: model,
-        PartDescription: p.Description,
-        Finish: p.Color, // Direct mapping from the 'Color' column
-        Size: p.Inch,
-        Width: p.Width,
-        PCD: p.PCD,
-        Offset: p.Offset,
-        CB: p.Centerhole,
-        Stock: parseInt(String(p.Stock), 10) || 0,
+        PartDescription: description,
+        Finish: getProp(p, 'Color'),
+        Size: getProp(p, 'Inch'),
+        Width: getProp(p, 'Width'),
+        PCD: getProp(p, 'PCD'),
+        Offset: getProp(p, 'Offset'),
+        CB: getProp(p, 'Centerhole'),
+        Stock: parseInt(String(getProp(p, 'Stock')), 10) || 0,
         Price: calculatedPrice,
         ImageUrl: imageUrl,
         ImageUrls: imageUrls,
@@ -89,14 +74,12 @@ const fetcher = async (): Promise<Response> => {
             try {
                 const errorData = await response.json();
                 errorDetails = errorData.details || errorData.error || errorDetails;
-            } catch (e) { /* ignore if response is not json */ }
+            } catch (e) {}
             throw new Error(errorDetails);
         }
         return response;
     } catch (error) {
-        console.error("Eroare la încărcarea Sursei 5:", error);
-        const message = error instanceof Error ? error.message : 'Eroare necunoscută.';
-        throw new Error(`Nu s-a putut încărca Sursa 5. Motiv: ${message}`);
+        throw new Error(`Nu s-a putut încărca Sursa 5. Motiv: ${error instanceof Error ? error.message : 'Eroare necunoscută.'}`);
     }
 };
 
@@ -105,8 +88,6 @@ export const source5: DataSource = {
   type: 'csv',
   fetcher,
   parserConfig: {
-    // Rely on headers to map columns. These are essential for mapping.
-    // We assume the file is now consistent and these headers are present.
     requiredHeaders: ['articlecode', 'brand', 'model', 'color', 'nett-price', 'stock'],
     delimiter: ';',
     encoding: 'windows-1252',
