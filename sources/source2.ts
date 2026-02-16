@@ -67,9 +67,9 @@ export const source2: DataSource = {
   url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTq1-FVmTlr588SwWJHqpPg9R9dW2M60QjR5bFmP20Wp-q5T0b1gc4krXy0b0ePi8_fkBc39ea8RbPS/pub?output=csv',
   type: 'csv',
   parserConfig: {
-    // We list headers in lowercase for the parser's detection logic,
-    // but the mapping function now handles any case in the actual data.
-    requiredHeaders: ['uid', 'brand', 'price'],
+    // Relaxed validation: We only strictly require 'uid' to be present to identify the header row.
+    // The map function will handle missing 'brand' or 'price' columns gracefully (returning empty/0).
+    requiredHeaders: ['uid'],
   },
   map,
 };
