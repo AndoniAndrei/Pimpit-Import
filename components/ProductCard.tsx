@@ -79,6 +79,10 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onProductClick }) =>
   const hasStock = stock > 0;
   const isWinterApproved = product.IsWinterApproved && String(product.IsWinterApproved).toLowerCase() === 'yes';
 
+  // Logic for Source Indicator (S1, S2, etc.)
+  const sourceNumber = product.Source ? product.Source.replace(/[^0-9]/g, '') : '';
+  const sourceLabel = sourceNumber ? `S${sourceNumber}` : null;
+
   return (
     <button
       onClick={() => onProductClick(product)}
@@ -94,7 +98,14 @@ const ProductCard: React.FC<ProductCardProps> = ({ product, onProductClick }) =>
           onError={(e) => { (e.target as HTMLImageElement).src = placeholderImage; }}
         />
         
-        {/* Badges container */}
+        {/* Source Indicator (Top Left) */}
+        {sourceLabel && (
+            <div className="absolute top-2 left-2 bg-gray-800 bg-opacity-70 text-white text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border border-white/20 z-10" title={product.Source}>
+                {sourceLabel}
+            </div>
+        )}
+
+        {/* Badges container (Top Right) */}
         <div className="absolute top-2 right-2 flex flex-col items-end gap-1">
             {hasDiscount && (
                 <span className="text-xs font-bold text-white bg-red-600 px-2 py-1 rounded-full shadow animate-pulse">
