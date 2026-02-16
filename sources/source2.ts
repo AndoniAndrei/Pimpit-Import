@@ -49,7 +49,7 @@ const map = async (data: Product[]): Promise<Product[]> => {
         ThreeSixtyImageUrl: getVal(p, '360 IMAGE'),
         ImageUrl: imageUrl,
         ImageUrls: imageUrl ? [imageUrl] : [],
-        Stock: parseInt(getVal(p, 'STOCK'), 10) || 0,
+        Stock: parseInt(getVal(p, 'TOTAL STOCK'), 10) || 0,
         Price: calculatedPrice,
         Source: 'Sursa 2',
         ProductType: 'Jante',
