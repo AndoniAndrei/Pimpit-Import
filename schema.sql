@@ -1,7 +1,7 @@
 -- 1. Enable extensions
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- 2. Cleanup (Use CASCADE to remove dependent objects like policies/indexes)
+-- 2. Cleanup (Stergem tabelele vechi daca exista pentru a recrea structura corecta)
 DROP FUNCTION IF EXISTS truncate_products();
 DROP TABLE IF EXISTS public.products CASCADE;
 DROP TABLE IF EXISTS public.sync_status CASCADE;
@@ -23,7 +23,7 @@ CREATE TABLE public.products (
     size text,
     width text,
     pcd text,
-    et text, -- Changed from "offset" to "et" to avoid SQL reserved keyword conflict
+    et text, -- AM REDENUMIT "offset" IN "et" PENTRU A EVITA EROAREA DE SINTAXA
     finish text,
     product_type text,
     

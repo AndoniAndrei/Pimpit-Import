@@ -158,9 +158,9 @@ export const useProductsData = () => {
 
   const initData = async () => {
       setLoading(true);
-      const isConnected = await checkSupabaseConnection();
+      const connectionStatus = await checkSupabaseConnection();
       
-      if (isConnected) {
+      if (connectionStatus.success) {
           // 1. Check if we need to sync
           const { data: statusData } = await supabase.from('sync_status').select('*').eq('id', 1).single();
           const lastSynced = statusData?.last_synced_at ? new Date(statusData.last_synced_at).getTime() : 0;
@@ -176,7 +176,7 @@ export const useProductsData = () => {
               performBackgroundSync(); // Don't await this if we have data, let it run in bg
           }
       } else {
-          setSourceErrors([{ name: 'System', message: 'Nu s-a putut conecta la baza de date.'}]);
+          setSourceErrors([{ name: 'System', message: connectionStatus.message || 'Nu s-a putut conecta la baza de date.'}]);
           setLoading(false);
       }
   };
