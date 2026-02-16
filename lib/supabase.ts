@@ -8,6 +8,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export const checkSupabaseConnection = async (): Promise<{ success: boolean; message?: string }> => {
+    console.log("[Supabase] Verificare conexiune la:", SUPABASE_URL);
+
     // Basic validation to ensure placeholder keys aren't being used
     if (SUPABASE_URL.includes('YOUR_PROJECT_ID')) {
         return { success: false, message: 'Configuration missing: PROJECT_ID not set.' };
@@ -18,20 +20,23 @@ export const checkSupabaseConnection = async (): Promise<{ success: boolean; mes
         const { error } = await supabase.from('products').select('count', { count: 'exact', head: true });
         
         if (error) {
+            console.error("[Supabase] Connection Error Object:", error);
+            
             // Error code 42P01 means 'undefined_table' (table missing)
             if (error.code === '42P01') {
-                console.warn("Supabase Connected, but 'products' table is missing.");
+                console.warn("[Supabase] Table 'products' is missing.");
                 return { 
                     success: false, 
                     message: "Conectat la Supabase, dar tabelul 'products' lipsește. Te rog rulează conținutul fișierului 'schema.sql' în SQL Editor din Supabase." 
                 };
             }
-            console.warn("Supabase connection check failed:", error.message);
-            return { success: false, message: `Eroare conexiune Supabase: ${error.message}` };
+            return { success: false, message: `Eroare conexiune Supabase: ${error.message} (Cod: ${error.code})` };
         }
+        
+        console.log("[Supabase] Conexiune reușită.");
         return { success: true };
     } catch (e) {
-        console.error("Supabase connection exception:", e);
+        console.error("[Supabase] Exception:", e);
         return { success: false, message: "Eroare neașteptată la conectarea cu baza de date." };
     }
 };

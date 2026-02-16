@@ -108,7 +108,8 @@ export const useProductsData = () => {
                 console.log(`${source.name}: Found ${mapped.length} products.`);
                 processedProducts.push(...mapped);
             } catch (e) {
-                console.error(`Sync error source ${source.name}`, e);
+                // EXPLICIT ERROR LOGGING AS REQUESTED
+                console.error(`[SYNC ERROR] Nu s-a putut descărca ${source.name}:`, e);
             }
         }
 
@@ -150,7 +151,7 @@ export const useProductsData = () => {
         await loadFromSupabase();
 
       } catch (e) {
-          console.error("Sync Failed", e);
+          console.error("Sync Failed Global:", e);
       } finally {
           setIsSyncing(false);
       }
@@ -160,6 +161,8 @@ export const useProductsData = () => {
       setLoading(true);
       const connectionStatus = await checkSupabaseConnection();
       
+      console.log("[Init] Supabase Status:", connectionStatus);
+
       if (connectionStatus.success) {
           // 1. Check if we need to sync
           const { data: statusData } = await supabase.from('sync_status').select('*').eq('id', 1).single();
@@ -176,7 +179,10 @@ export const useProductsData = () => {
               performBackgroundSync(); // Don't await this if we have data, let it run in bg
           }
       } else {
-          setSourceErrors([{ name: 'System', message: connectionStatus.message || 'Nu s-a putut conecta la baza de date.'}]);
+          setSourceErrors([{ 
+            name: 'System', 
+            message: connectionStatus.message || 'Eroare generică de conexiune (verifică consola).' 
+          }]);
           setLoading(false);
       }
   };
