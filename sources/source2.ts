@@ -2,43 +2,54 @@
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
 
+// Helper to get value case-insensitively
+const getVal = (item: any, key: string): string => {
+    if (item[key] !== undefined) return String(item[key]);
+    const lowerKey = key.toLowerCase();
+    const foundKey = Object.keys(item).find(k => k.toLowerCase() === lowerKey);
+    return foundKey ? String(item[foundKey]) : '';
+};
+
 // Maps data from the second source, calculates price, and unifies structure
 const map = async (data: Product[]): Promise<Product[]> => {
   const initialProducts = data
-    .filter(p => p && p['UID'] && String(p['UID']).trim() !== '')
+    .filter(p => {
+        const uid = getVal(p, 'UID');
+        return uid && uid.trim() !== '';
+    })
     .map(p => {
-      const priceBaseStr = String(p['PRICE'] || '0').replace(',', '.');
+      const priceBaseStr = getVal(p, 'PRICE').replace(',', '.') || '0';
       const priceBase = parseFloat(priceBaseStr) || 0;
       
       // -> (((((M cell value *4)+80)*1.21)*1.43)/4)*6 -> rezultatul este pretul in lei afisat pe platforma, rotunjeste.
-      const calculatedPrice = Math.round((((((priceBase * 4) + 80) * 1.21) * 1.43) / 4) * 6);
+      const calculatedPrice = Math.round((((((priceBase * 4) + 80) * 1.21) * 1.43) * 6) / 4);
       
-      const brand = p['BRAND'] || '';
-      const design = p['DESIGN'] || '';
-      const colour = p['COLOUR'] || '';
-      const holes = p['HOLES'] || '';
-      const pcdVal = p['PCD'] || '';
+      const brand = getVal(p, 'BRAND');
+      const design = getVal(p, 'DESIGN');
+      const colour = getVal(p, 'COLOUR');
+      const holes = getVal(p, 'HOLES');
+      const pcdVal = getVal(p, 'PCD');
       const pcd = (holes && pcdVal) ? `${holes}x${pcdVal}` : pcdVal;
 
-      const imageUrl = p['IMG'];
+      const imageUrl = getVal(p, 'IMG');
 
       const product: Product = {
-        PartNumber: p['UID'],
+        PartNumber: getVal(p, 'UID'),
         Brand: brand,
         Model: design,
         Finish: colour,
         PartDescription: `${brand} ${design} ${colour}`.trim().replace(/\s+/g, ' '),
-        Width: p['WIDTH'],
-        Size: p['DIAMETER'],
-        Offset: p['ET'],
+        Width: getVal(p, 'WIDTH'),
+        Size: getVal(p, 'DIAMETER'),
+        Offset: getVal(p, 'ET'),
         PCD: pcd,
-        CB: p['CB'],
-        Load: p['LOAD'],
-        Weight: p['WEIGHT(KG)'],
-        ThreeSixtyImageUrl: p['360 IMAGE'],
+        CB: getVal(p, 'CB'),
+        Load: getVal(p, 'LOAD'),
+        Weight: getVal(p, 'WEIGHT(KG)'),
+        ThreeSixtyImageUrl: getVal(p, '360 IMAGE'),
         ImageUrl: imageUrl,
         ImageUrls: imageUrl ? [imageUrl] : [],
-        Stock: parseInt(p['STOCK'], 10) || 0,
+        Stock: parseInt(getVal(p, 'STOCK'), 10) || 0,
         Price: calculatedPrice,
         Source: 'Sursa 2',
         ProductType: 'Jante',
@@ -56,7 +67,8 @@ export const source2: DataSource = {
   url: 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTq1-FVmTlr588SwWJHqpPg9R9dW2M60QjR5bFmP20Wp-q5T0b1gc4krXy0b0ePi8_fkBc39ea8RbPS/pub?output=csv',
   type: 'csv',
   parserConfig: {
-    // Using the exact headers from the user's file
+    // We list headers in lowercase for the parser's detection logic,
+    // but the mapping function now handles any case in the actual data.
     requiredHeaders: ['uid', 'brand', 'price'],
   },
   map,
