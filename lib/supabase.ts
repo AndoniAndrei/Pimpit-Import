@@ -2,8 +2,8 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Credentials for Pimpit.ro Supabase Project
-const SUPABASE_URL = 'https://fkblpalqtxszgetuepsx.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZrYmxwYWxxdHhzemdldHVlcHN4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3NDM2NjgsImV4cCI6MjA4MDMxOTY2OH0.oAFEarraz41Jiak1a-WvQzH-YNdz_Z7I4vGslMyGWpU';
+const SUPABASE_URL = 'https://elfumzzbfrpqyaztxyee.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVsZnVtenpiZnJwcXlhenR4eWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5ODg3ODksImV4cCI6MjA4NjU2NDc4OX0.y3T3KYIuDhocc81jq0PsmMWy2JfmsezqcXpGcsGzNcU';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
