@@ -5,30 +5,36 @@ export const config = {
   runtime: 'edge',
 };
 
-// --- Updated Target URL based on API documentation ---
-// Added IncludeDirtRims=true to fetch the missing "Dirt" product line.
-const DATA_URL = 'https://api.statusfalgar.se/api/Articles?IncludeAlloyRims=true&IncludeSteelRims=true&IncludeDirtRims=true'; 
-const USER_AGENT = 'Pimpit-B2B-Catalog-Proxy/1.3'; // Version bump
+// URL construction based on provided API Docs
+// We explicitly request Alloy and Steel Rims.
+// We exclude CarTyres and Accessories to reduce payload size and focus on wheels.
+const BASE_URL = 'https://api.statusfalgar.se/api/Articles';
+const PARAMS = new URLSearchParams({
+    OnlyLocalStockItems: 'false', // Fetch full stock, not just local
+    IncludeCarTyres: 'false',     // Exclude tyres
+    IncludeAlloyRims: 'true',     // Include Alloys (Status, Boost, Dirt usually fall here)
+    IncludeSteelRims: 'true',     // Include Steel (Just in case)
+    IncludeAccessories: 'false'   // Exclude nuts/bolts/etc
+});
 
-/**
- * Fetches data from Source 6 using Basic Authentication.
- */
+const DATA_URL = `${BASE_URL}?${PARAMS.toString()}`;
+const USER_AGENT = 'Pimpit-B2B-Catalog-Proxy/2.0';
+
 export default async function handler(req: Request): Promise<Response> {
-  // Credentials provided by the user.
+  // Credentials
   const customerId = '5432';
   const token = 'BSzMrDxAzojUYyGVvXZL3G3Bci0d0PsxRXWq';
 
-  // For Basic Auth, credentials must be in the format "username:password" and Base64 encoded.
-  // In this API's case, it's "customerId:token".
+  // Basic Auth: Base64 encode "CustomerId:Token"
   const authString = `${customerId}:${token}`;
-  const encodedAuth = btoa(authString); // btoa is available in Edge Runtime
+  const encodedAuth = btoa(authString); 
 
   try {
-    // Fetch the data using the new Basic Authentication header.
     const dataResponse = await fetch(DATA_URL, {
         headers: {
             'User-Agent': USER_AGENT,
             'Authorization': `Basic ${encodedAuth}`,
+            'Accept': 'application/json' // Explicitly request JSON
         },
         cache: 'no-store',
     });
@@ -36,12 +42,12 @@ export default async function handler(req: Request): Promise<Response> {
     if (!dataResponse.ok) {
         const errorBodyText = await dataResponse.text();
         console.error(`Source 6 API Error (Status: ${dataResponse.status}): ${errorBodyText}`);
-        throw new Error(`Autorizare eșuată la Sursa 6 (Status: ${dataResponse.status}). Verificați Customer ID și Token.`);
+        throw new Error(`Eroare Statusfälgar API (Status: ${dataResponse.status})`);
     }
 
-    // Stream the data back to the client.
+    // Pass the response headers and body through
     const responseHeaders = new Headers();
-    responseHeaders.set('Content-Type', dataResponse.headers.get('Content-Type') || 'text/csv; charset=utf-8');
+    responseHeaders.set('Content-Type', 'application/json; charset=utf-8');
     responseHeaders.set('Cache-Control', 'no-cache, no-store, must-revalidate');
 
     return new Response(dataResponse.body, {
@@ -50,11 +56,11 @@ export default async function handler(req: Request): Promise<Response> {
     });
 
   } catch (error) {
-    console.error('Eroare în proxy-ul pentru Sursa 6:', error);
-    const errorMessage = error instanceof Error ? error.message : 'A apărut o eroare necunoscută.';
+    console.error('Eroare critică Sursa 6:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Eroare necunoscută.';
     return new Response(
       JSON.stringify({
-          error: "Eroare la încărcarea Sursei 6.",
+          error: "Eroare la sincronizarea Sursei 6.",
           details: errorMessage
       }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }

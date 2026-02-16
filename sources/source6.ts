@@ -1,87 +1,121 @@
 
 import { DataSource, Product } from '../types';
-import { normalizeProductAttributes, getProp } from '../utils/productUtils';
+import { normalizeProductAttributes } from '../utils/productUtils';
 
-// Configurare: Lista de branduri permise și variațiile lor (Regex).
-// Cheia: Numele standardizat care va fi salvat în baza de date.
-// Valoarea: Expresia regulată (Regex) care verifică dacă brandul din API se potrivește.
-const ALLOWED_BRANDS: Record<string, RegExp> = {
-  'Dirt AT': /\b(Dirt|Dirt\s*A\.?T\.?)\b/i,      // Prinde: "Dirt", "Dirt AT", "Dirt A.T."
-  'Boost Wheels': /\b(Boost|Boost\s*Wheels)\b/i, // Prinde: "Boost", "Boost Wheels"
-  'Status Wheels': /\b(Status|Status\s*Wheels)\b/i // Prinde: "Status", "Status Wheels"
+// --- CONFIGURATION ---
+
+// Whitelist of brands to import.
+// Key: The clean, official name to save in DB.
+// Value: Regex to match variations in the 'BrandName' field from API.
+const BRAND_WHITELIST: Record<string, RegExp> = {
+    'Dirt AT': /\b(Dirt|Dirt\s*A\.?T\.?)\b/i,          // Matches "Dirt", "Dirt AT", "Dirt A.T."
+    'Boost Wheels': /\b(Boost|Boost\s*Wheels)\b/i,     // Matches "Boost", "Boost Wheels"
+    'Status Wheels': /\b(Status|Status\s*Wheels)\b/i   // Matches "Status", "Status Wheels"
 };
 
+// Interface reflecting the specific JSON structure from Statusfälgar Docs
+interface StatusArticle {
+    ArticleId: number;
+    EAN: number;
+    ArticleText: string;
+    BrandName: string;
+    ModelName: string;
+    Color: string;
+    ImageId?: number;
+    Width: number;
+    Diameter: number;
+    NumberOfBolts: number;
+    BoltCircle: string; // e.g. "5-112" or "112"
+    Offset: number;
+    CenterBore: number;
+    LoadRating: number;
+    QuantityAvailable: number;
+    Price: number; // Price excluding recycling fee
+    RecyclingFee: number;
+}
+
 const map = async (data: any): Promise<Product[]> => {
-  const articles = Array.isArray(data) ? data : (data?.Articles || []);
-  if (!Array.isArray(articles)) return [];
+    // The API returns a direct array of objects based on the docs sample.
+    // We handle cases where it might be wrapped, just to be safe.
+    const rawArticles: StatusArticle[] = Array.isArray(data) ? data : (data?.Articles || []);
 
-  const initialProducts = articles
-    .map(p => {
-      // 1. Verificare ID Valid
-      const id = getProp(p, 'ArticleId') || getProp(p, 'Id');
-      if (!id) return null;
+    if (!rawArticles.length) return [];
 
-      // 2. Identificare și Filtrare Brand
-      const rawBrand = String(getProp(p, 'Brand Name') || getProp(p, 'BrandName') || '').trim();
-      
-      let matchedBrandName: string | null = null;
-      
-      // Iterăm prin configurație pentru a găsi o potrivire
-      for (const [officialName, regex] of Object.entries(ALLOWED_BRANDS)) {
-        if (regex.test(rawBrand)) {
-          matchedBrandName = officialName;
-          break;
+    const processedProducts: Product[] = [];
+
+    for (const item of rawArticles) {
+        // 1. Validate ID
+        if (!item.ArticleId) continue;
+
+        // 2. BRAND FILTERING
+        const rawBrand = (item.BrandName || '').trim();
+        let normalizedBrand: string | null = null;
+
+        for (const [officialName, regex] of Object.entries(BRAND_WHITELIST)) {
+            if (regex.test(rawBrand)) {
+                normalizedBrand = officialName;
+                break;
+            }
         }
-      }
 
-      // Dacă brandul nu este în lista permisă, ignorăm produsul (return null)
-      if (!matchedBrandName) {
-        return null;
-      }
+        // Skip if brand is not in our whitelist
+        if (!normalizedBrand) continue;
 
-      // 3. Calcul Preț
-      const rawPrice = getProp(p, 'NettPrice') || getProp(p, 'Price') || 0;
-      const purchasePrice = parseFloat(String(rawPrice).replace(',', '.')) || 0;
-      
-      // Formula: (((((M cell value *4)+1080)*1.21)*1.4)/4)*0.48
-      const calculatedPrice = purchasePrice > 0 
-        ? Math.round((((((purchasePrice * 4) + 1080) * 1.21) * 1.4) / 4) * 0.48)
-        : 0;
+        // 3. Price Calculation
+        // Formula: (((((Price * 4) + 1080) * 1.21) * 1.4) / 4) * 0.48
+        const basePrice = Number(item.Price) || 0;
+        let calculatedPrice = 0;
+        
+        if (basePrice > 0) {
+             calculatedPrice = Math.round((((((basePrice * 4) + 1080) * 1.21) * 1.4) / 4) * 0.48);
+        }
 
-      // 4. Procesare Date Tehnice
-      const numberOfBolts = String(getProp(p, 'Number of bolts') || getProp(p, 'NumberOfBolts') || '').trim();
-      const boltCircle = String(getProp(p, 'BoltCirlce') || getProp(p, 'BoltCircle') || '').trim();
-      const pcd = (numberOfBolts && boltCircle) ? `${numberOfBolts}x${boltCircle}` : boltCircle;
+        // 4. PCD Construction
+        // API gives NumberOfBolts (e.g., 5) and BoltCircle (e.g., "112" or "114.3")
+        const holes = item.NumberOfBolts;
+        const pcdVal = item.BoltCircle;
+        let pcd = '';
+        if (holes && pcdVal) {
+            // Check if pcdVal already contains the holes (e.g. "5x112")
+            if (String(pcdVal).includes('x') || String(pcdVal).includes('-')) {
+                 pcd = String(pcdVal).replace('-', 'x'); // Normalize 5-112 to 5x112
+            } else {
+                 pcd = `${holes}x${pcdVal}`;
+            }
+        } else {
+            pcd = String(pcdVal || '');
+        }
 
-      const model = getProp(p, 'Model Name') || getProp(p, 'ModelName') || '';
-      const imageId = getProp(p, 'ImageId') || getProp(p, 'MainImageId');
-      const imageUrl = imageId ? `https://api.statusfalgar.se/api/Images/${imageId}` : undefined;
+        // 5. Image URL
+        // Endpoint: GET api/Images/{id}
+        const imageUrl = item.ImageId ? `https://api.statusfalgar.se/api/Images/${item.ImageId}` : undefined;
 
-      const product: Product = {
-        PartNumber: id,
-        PartDescription: getProp(p, 'Article Text') || `${matchedBrandName} ${model}`.trim(),
-        Brand: matchedBrandName, // Folosim numele standardizat (ex: Boost Wheels)
-        Model: model,
-        Finish: getProp(p, 'Color') || getProp(p, 'Finish'),
-        Width: getProp(p, 'Width'),
-        Size: getProp(p, 'Diameter') || getProp(p, 'Size'),
-        PCD: pcd,
-        Offset: getProp(p, 'offset') || getProp(p, 'ET'),
-        CB: getProp(p, 'CenterBore') || getProp(p, 'CH'),
-        Load: getProp(p, 'LoadRating') || getProp(p, 'MaxLoad'),
-        Stock: parseInt(String(getProp(p, 'QuantityAvailable') || getProp(p, 'Stock') || 0), 10) || 0,
-        Price: calculatedPrice,
-        ImageUrl: imageUrl,
-        ImageUrls: imageUrl ? [imageUrl] : [],
-        Source: 'Sursa 6',
-        ProductType: 'Jante',
-      };
-      
-      return product;
-    })
-    .filter((p): p is Product => p !== null); // Eliminăm produsele care au returnat null (cele filtrate)
+        const product: Product = {
+            PartNumber: String(item.ArticleId),
+            EAN: String(item.EAN || ''),
+            Brand: normalizedBrand,
+            Model: item.ModelName,
+            PartDescription: item.ArticleText || `${normalizedBrand} ${item.ModelName}`,
+            Finish: item.Color,
+            Size: String(item.Diameter),
+            Width: String(item.Width),
+            PCD: pcd,
+            Offset: String(item.Offset),
+            CB: String(item.CenterBore),
+            Load: String(item.LoadRating),
+            Stock: Number(item.QuantityAvailable) || 0,
+            Price: calculatedPrice,
+            ImageUrl: imageUrl,
+            ImageUrls: imageUrl ? [imageUrl] : [],
+            Source: 'Sursa 6',
+            ProductType: 'Jante',
+        };
 
-    return initialProducts.map(product => normalizeProductAttributes(product));
+        processedProducts.push(product);
+    }
+
+    // Apply global normalization (trimming, formatting numbers)
+    return processedProducts.map(p => normalizeProductAttributes(p));
 };
 
 export const source6: DataSource = {
