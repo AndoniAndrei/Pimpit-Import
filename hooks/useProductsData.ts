@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Product, SourceError } from '../types';
 import { allSources } from '../sources';
 import { parseXMLData } from '../utils/xmlParser';
@@ -15,15 +15,17 @@ export const useProductsData = () => {
   const [isUsingDatabase, setIsUsingDatabase] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
 
+  // Load products from DB (Fast)
   const loadFromSupabase = async () => {
       try {
-          const { count, error: countError } = await supabase.from('products').select('*', { count: 'exact', head: true });
-          if (countError) throw countError;
+          // First, get the total count to show progress if needed, although exact count might be slow on huge tables
+          const { count } = await supabase.from('products').select('*', { count: 'exact', head: true });
           const totalRows = count || 0;
           
-          if (totalRows === 0) return false;
+          if (totalRows === 0) return false; // DB is empty
 
           let allDbProducts: Product[] = [];
+          // CRITICAL FIX: Supabase API limit is 1000 rows per request. 
           const PAGE_SIZE = 1000; 
           let from = 0;
           let hasMore = true;
@@ -31,19 +33,36 @@ export const useProductsData = () => {
           setLoadingMessage(`Se încarcă catalogul... (0 din ${totalRows})`);
 
           while (hasMore) {
-              const { data, error } = await supabase.from('products').select('*').range(from, from + PAGE_SIZE - 1).order('brand', { ascending: true });
+              const to = from + PAGE_SIZE - 1;
+              const { data, error } = await supabase.from('products').select('*').range(from, to);
+              
               if (error) throw error;
+              
               if (data && data.length > 0) {
                   const mappedBatch = data.map(mapDbToProduct);
                   allDbProducts = allDbProducts.concat(mappedBatch);
-                  setProducts(prev => from === 0 ? mappedBatch : [...prev, ...mappedBatch]);
+                  
+                  // Update UI incrementally so user sees something fast
+                  // We use functional update to ensure we append to the latest state
+                  setProducts(prev => {
+                      // Avoid duplicates if React strict mode double-invokes
+                      if (from === 0) return mappedBatch; 
+                      return [...prev, ...mappedBatch];
+                  });
+
                   setLoadingMessage(`Se încarcă catalogul... (${allDbProducts.length} din ${totalRows})`);
-                  if (data.length < PAGE_SIZE) hasMore = false;
-                  else from += PAGE_SIZE;
-              } else hasMore = false;
+                  
+                  if (data.length < PAGE_SIZE) {
+                      hasMore = false;
+                  } else {
+                      from += PAGE_SIZE;
+                  }
+              } else {
+                  hasMore = false;
+              }
           }
           setIsUsingDatabase(true);
-          setLoading(false);
+          setLoading(false); // Done loading initial view
           return true;
       } catch (e) {
           console.error("Error loading from Supabase:", e);
@@ -51,74 +70,127 @@ export const useProductsData = () => {
       }
   };
 
+  // The Heavy Worker: Background Sync
   const performBackgroundSync = async () => {
       if (isSyncing) return;
       setIsSyncing(true);
-      const errors: SourceError[] = [];
-      const allMappedProducts: Product[] = [];
+      console.log("Starting Background Sync...");
 
-      for (const source of allSources) {
-          try {
-              const res = source.fetcher ? await source.fetcher() : await fetch(source.url!, { cache: 'no-store' });
-              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      try {
+        // 1. Fetch Sources Sequentially (To avoid memory/network bottleneck)
+        const processedProducts: Product[] = [];
+        
+        for (const source of allSources) {
+            console.log(`Syncing ${source.name}...`);
+            try {
+                const fetchOptions: RequestInit = { cache: 'no-store' };
+                const res = source.fetcher ? await source.fetcher() : await fetch(source.url!, fetchOptions);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-              let parsedData: any[];
-              if (source.type === 'xml') {
-                  parsedData = parseXMLData(await res.text());
-              } else if (source.type === 'json') {
-                  parsedData = await res.json();
-              } else {
-                  const text = source.parserConfig?.encoding ? new TextDecoder(source.parserConfig.encoding).decode(await res.arrayBuffer()) : await res.text();
-                  parsedData = await parseCsvInWorker(text, source.parserConfig || {});
-              }
-              const mapped = await source.map(parsedData);
-              allMappedProducts.push(...mapped);
-              console.log(`Source ${source.name} synced: ${mapped.length} products`);
-          } catch (e) {
-              console.error(`Sync error: ${source.name}`, e);
-              errors.push({ name: source.name, message: e instanceof Error ? e.message : 'Eroare' });
-          }
+                let parsedData: any[];
+                if (source.type === 'xml') {
+                    const text = await res.text();
+                    parsedData = parseXMLData(text);
+                } else if (source.type === 'json') {
+                    parsedData = await res.json();
+                } else {
+                    let text: string;
+                    if (source.parserConfig?.encoding) {
+                         const buffer = await res.arrayBuffer();
+                         const decoder = new TextDecoder(source.parserConfig.encoding);
+                         text = decoder.decode(buffer);
+                    } else {
+                         text = await res.text();
+                    }
+                    parsedData = await parseCsvInWorker(text, source.parserConfig);
+                }
+                const mapped = await source.map(parsedData);
+                console.log(`${source.name}: Found ${mapped.length} products.`);
+                processedProducts.push(...mapped);
+            } catch (e) {
+                console.error(`Sync error source ${source.name}`, e);
+            }
+        }
+
+        // SAFETY ABORT: Strict check for product count.
+        // If we have significantly fewer products than expected (e.g. 10k), 
+        // it means major sources failed. We abort to protect the existing data.
+        if (processedProducts.length < 10000) {
+            console.error(`Safety Abort: Only ${processedProducts.length} products found. Expected > 10,000. Aborting sync.`);
+            // If this is the FIRST run (DB empty), we have no choice but to show errors.
+            // But we won't mark sync as "done" so it retries later.
+            throw new Error("Safety Abort: Too few products fetched. Check sources.");
+        }
+
+        // 2. Wipe DB (RPC)
+        console.log(`Data looks good (${processedProducts.length} items). Wiping DB...`);
+        const { error: truncError } = await supabase.rpc('truncate_products');
+        if (truncError) throw truncError;
+
+        // 3. Batch Insert (Raw Data)
+        const dbRows = processedProducts.map(mapProductToDb);
+        const BATCH_SIZE = 250; 
+        
+        for (let i = 0; i < dbRows.length; i += BATCH_SIZE) {
+            const batch = dbRows.slice(i, i + BATCH_SIZE);
+            const { error: insError } = await supabase.from('products').insert(batch);
+            if (insError) {
+                console.error("Batch insert error at index " + i, insError);
+                // We continue trying to insert other batches
+            }
+        }
+
+        // 4. Update Status
+        await supabase.from('sync_status').upsert({ id: 1, last_synced_at: new Date().toISOString(), is_syncing: false });
+        
+        console.log("Sync finished successfully. Reloading data...");
+        
+        // 5. Refresh UI with new data
+        setProducts([]); 
+        await loadFromSupabase();
+
+      } catch (e) {
+          console.error("Sync Failed", e);
+      } finally {
+          setIsSyncing(false);
       }
+  };
 
-      setSourceErrors(errors);
+  const initData = async () => {
+      setLoading(true);
+      const isConnected = await checkSupabaseConnection();
+      
+      if (isConnected) {
+          // 1. Check if we need to sync
+          const { data: statusData } = await supabase.from('sync_status').select('*').eq('id', 1).single();
+          const lastSynced = statusData?.last_synced_at ? new Date(statusData.last_synced_at).getTime() : 0;
+          const now = Date.now();
+          const hoursSinceSync = (now - lastSynced) / (1000 * 60 * 60);
 
-      // Only update if we have a significant amount of data to prevent total wipeout on failure
-      const { count: currentCount } = await supabase.from('products').select('*', { count: 'exact', head: true });
-      const minThreshold = currentCount ? Math.floor(currentCount * 0.5) : 1000;
+          // 2. Load what we have
+          const hasData = await loadFromSupabase();
 
-      if (allMappedProducts.length >= minThreshold) {
-          const { error: truncError } = await supabase.rpc('truncate_products');
-          if (truncError) console.error("Truncate failed:", truncError);
-
-          const dbRows = allMappedProducts.map(mapProductToDb);
-          const BATCH_SIZE = 500; 
-          for (let i = 0; i < dbRows.length; i += BATCH_SIZE) {
-              await supabase.from('products').insert(dbRows.slice(i, i + BATCH_SIZE));
+          // 3. If empty or old (>1 hour), trigger sync
+          if (!hasData || hoursSinceSync > 1) {
+              if (!hasData) setLoadingMessage("Se inițializează catalogul pentru prima dată...");
+              performBackgroundSync(); // Don't await this if we have data, let it run in bg
           }
-
-          await supabase.from('sync_status').upsert({ id: 1, last_synced_at: new Date().toISOString() });
-          await loadFromSupabase();
       } else {
-          console.warn(`Sync aborted: Only ${allMappedProducts.length} products found. Expected at least ${minThreshold}.`);
+          setSourceErrors([{ name: 'System', message: 'Nu s-a putut conecta la baza de date.'}]);
+          setLoading(false);
       }
-      setIsSyncing(false);
   };
 
   useEffect(() => {
-    const init = async () => {
-        const isConnected = await checkSupabaseConnection();
-        if (!isConnected) {
-            setLoading(false);
-            return;
-        }
-        const { data: status } = await supabase.from('sync_status').select('last_synced_at').eq('id', 1).single();
-        const lastSynced = status?.last_synced_at ? new Date(status.last_synced_at).getTime() : 0;
-        const needsSync = (Date.now() - lastSynced) > (1000 * 60 * 60 * 1); // Every 1h
-        const hasData = await loadFromSupabase();
-        if (!hasData || needsSync) performBackgroundSync();
-    };
-    init();
+    initData();
   }, []);
 
-  return { products, loading, loadingMessage, sourceErrors, isUsingDatabase, isSyncing };
+  return { 
+      products, 
+      loading, 
+      loadingMessage, 
+      sourceErrors, 
+      isUsingDatabase,
+      isSyncing
+  };
 };

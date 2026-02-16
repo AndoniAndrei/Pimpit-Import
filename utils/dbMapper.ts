@@ -1,36 +1,40 @@
 
 import { Product } from '../types';
 
+// Converts an App Product (PascalCase) to a Database Row (snake_case)
 export const mapProductToDb = (p: Product) => {
+  // Robust validation for numeric fields
   const safePrice = Number.isFinite(p.Price) ? p.Price : 0;
   const safeOldPrice = Number.isFinite(p.OldPrice) ? p.OldPrice : null;
   const safeStock = Number.isFinite(p.Stock) ? p.Stock : 0;
 
   return {
     part_number: String(p.PartNumber || '').trim(),
-    brand: String(p.Brand || 'Unknown').trim(),
-    model: String(p.Model || '').trim(),
-    part_description: String(p.PartDescription || '').trim(),
+    brand: p.Brand,
+    model: p.Model,
+    part_description: p.PartDescription,
     price: safePrice,
     old_price: safeOldPrice,
     stock: safeStock,
-    image_url: p.ImageUrl || null,
-    source_file: p.Source || 'Unknown', 
+    image_url: p.ImageUrl,
+    source_file: p.Source, 
     
+    // Indexed filters
     size: p.Size ? String(p.Size) : null,
     width: p.Width ? String(p.Width) : null,
     pcd: p.PCD ? String(p.PCD) : null,
-    et_offset: p.Offset ? String(p.Offset) : null, // Fixed: et_offset instead of offset
-    finish: p.Finish || null,
-    product_type: p.ProductType || 'Jante',
+    et: p.Offset ? String(p.Offset) : null, // MAPPED: App 'Offset' -> DB 'et'
+    finish: p.Finish,
+    product_type: p.ProductType,
     
+    // Metadata
     metadata: {
         ean: p.EAN,
         cb: p.CB,
         load: p.Load,
         weight: p.Weight,
         description: p.Description,
-        image_urls: p.ImageUrls || [],
+        image_urls: p.ImageUrls,
         is_winter_approved: p.IsWinterApproved,
         on_the_water_stock: p.OnTheWaterStock,
         youtube_url: p.YoutubeUrl,
@@ -41,11 +45,12 @@ export const mapProductToDb = (p: Product) => {
   };
 };
 
+// Converts a Database Row (snake_case) back to App Product (PascalCase)
 export const mapDbToProduct = (row: any): Product => {
   const metadata = row.metadata || {};
   
   return {
-    id: row.id,
+    id: row.id, 
     PartNumber: row.part_number,
     Brand: row.brand,
     Model: row.model,
@@ -59,10 +64,11 @@ export const mapDbToProduct = (row: any): Product => {
     Size: row.size,
     Width: row.width,
     PCD: row.pcd,
-    Offset: row.et_offset, // Map back from et_offset
+    Offset: row.et, // MAPPED: DB 'et' -> App 'Offset'
     Finish: row.finish,
     ProductType: row.product_type,
     
+    // Metadata mapping
     EAN: metadata.ean,
     CB: metadata.cb,
     Load: metadata.load,

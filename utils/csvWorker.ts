@@ -1,136 +1,144 @@
 
-/* global importScripts, self */
-declare var Papa: any;
+// This worker script is defined as a string to allow dynamic creation via Blob,
+// ensuring it works without complex bundler configurations for separate worker files.
 
-export const parseCsvInWorker = (text: string, config: any): Promise<any[]> => {
-    return new Promise((resolve, reject) => {
-        if (typeof window !== 'undefined' && (window as any).Papa) {
-            try {
-                const result = internalParseCSV((window as any).Papa, text, config);
-                return resolve(result);
-            } catch (e) {
-                return reject(e);
+const workerCode = `
+importScripts('https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js');
+
+self.onmessage = function(e) {
+    const { text, config, id } = e.data;
+    try {
+        const result = parseCSV(text, config);
+        self.postMessage({ id, success: true, data: result });
+    } catch (error) {
+        self.postMessage({ id, success: false, error: error.message });
+    }
+};
+
+function parseCSV(text, config) {
+    if (text.charCodeAt(0) === 0xFEFF) {
+        text = text.slice(1);
+    }
+
+    // Logic ported from original csvParser.ts
+
+    // Case 1: Column Mapping (Position based)
+    if (config.columnMapping) {
+        const papaConfig = { skipEmptyLines: true };
+        if (config.delimiter) papaConfig.delimiter = config.delimiter;
+        
+        const parseResult = Papa.parse(text, papaConfig);
+        if (parseResult.errors.length > 0) {
+            const fatalError = parseResult.errors.find(e => e.code !== 'TooFewFields' && e.code !== 'TooManyFields');
+            if (fatalError) throw new Error("CSV Parsing Error: " + fatalError.message);
+        }
+        
+        const table = parseResult.data;
+        if (table.length === 0) return [];
+
+        const headers = config.columnMapping;
+        const dataRows = table.slice(1);
+
+        return dataRows.map(row => {
+            if (row.every(cell => !cell || !String(cell).trim())) return null;
+            const product = {};
+            headers.forEach((header, index) => {
+                if (header && index < row.length) {
+                    product[header] = row[index];
+                }
+            });
+            return product;
+        }).filter(p => p !== null);
+    }
+
+    // Case 2: Required Headers (Name based)
+    if (config.requiredHeaders && config.requiredHeaders.length > 0) {
+        const papaConfig = { skipEmptyLines: true };
+        if (config.delimiter) papaConfig.delimiter = config.delimiter;
+
+        const parseResult = Papa.parse(text, papaConfig);
+         if (parseResult.errors.length > 0) {
+            const fatalError = parseResult.errors.find(e => e.code !== 'TooFewFields' && e.code !== 'TooManyFields');
+            if (fatalError) {
+                 // We ignore recoverable errors like row length mismatches here, matching original logic
+                 // throw new Error("CSV Parsing Error: " + fatalError.message);
             }
         }
 
-        const workerBlob = new Blob([`
-            importScripts('https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js');
-            self.onmessage = function(e) {
-                const { text, config } = e.data;
-                try {
-                    const result = parseLogic(Papa, text, config);
-                    self.postMessage({ success: true, data: result });
-                } catch (err) {
-                    self.postMessage({ success: false, error: err.message });
-                }
-            };
+        const allRows = parseResult.data;
+        if (allRows.length === 0) return [];
 
-            function parseLogic(Papa, text, config) {
-                if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-                const pConfig = { skipEmptyLines: 'greedy' };
-                if (config.delimiter) pConfig.delimiter = config.delimiter;
-                
-                const parseResult = Papa.parse(text, pConfig);
-                const allRows = parseResult.data;
-                if (!allRows || allRows.length === 0) return [];
+        const requiredLower = config.requiredHeaders.map(h => h.toLowerCase());
+        let headerRowIndex = -1;
+        let originalHeaders = [];
 
-                // 1. Strict Column Mapping (e.g. Source 4)
-                if (config.columnMapping) {
-                    const headers = config.columnMapping;
-                    return allRows.slice(1).map(row => {
-                        const obj = {};
-                        headers.forEach((h, i) => { if(h && i < row.length) obj[h] = row[i]; });
-                        return obj;
-                    }).filter(o => Object.values(o).some(v => v));
-                }
+        // Robust header detection
+        for (let i = 0; i < allRows.length; i++) {
+            const potentialHeader = allRows[i].map(h => String(h || '').trim().toLowerCase());
+            const matchCount = requiredLower.filter(req => potentialHeader.includes(req)).length;
+            const threshold = Math.ceil(requiredLower.length * 0.8);
 
-                // 2. Header Finding Logic
-                let headerIdx = -1;
-                if (config.requiredHeaders) {
-                    const req = config.requiredHeaders.map(h => h.toLowerCase());
-                    headerIdx = allRows.findIndex(row => {
-                        const r = row.map(c => String(c || '').toLowerCase().trim());
-                        return req.every(h => r.includes(h)) || (req.length > 3 && req.slice(0, 3).every(h => r.includes(h)));
-                    });
-                }
-
-                if (headerIdx === -1) {
-                    const keywords = ['brand', 'sku', 'price', 'pret', 'artnr', 'article'];
-                    headerIdx = allRows.findIndex(row => {
-                        const r = row.map(c => String(c || '').toLowerCase());
-                        return keywords.some(kw => r.some(cell => cell.includes(kw)));
-                    });
-                }
-
-                if (headerIdx === -1) headerIdx = allRows.findIndex(row => row.length > 3);
-                if (headerIdx === -1) headerIdx = 0;
-
-                const headers = allRows[headerIdx].map(h => String(h || '').trim());
-                const dataRows = allRows.slice(headerIdx + 1);
-
-                return dataRows.map(row => {
-                    const obj = {};
-                    headers.forEach((h, i) => { if(h && i < row.length) obj[h] = row[i]; });
-                    return obj;
-                }).filter(o => Object.values(o).some(v => v));
+            if (requiredLower.length > 0 && matchCount >= threshold) {
+                headerRowIndex = i;
+                originalHeaders = allRows[i].map(h => String(h || '').trim());
+                break;
             }
-        `], { type: 'application/javascript' });
+        }
 
-        const worker = new Worker(URL.createObjectURL(workerBlob));
+        if (headerRowIndex === -1) {
+            const foundHeadersSample = allRows.length > 0 ? allRows[0].join(', ') : 'File Empty';
+            throw new Error("Antet (coloane) invalid. Nu s-au gasit coloanele necesare: " + config.requiredHeaders.join(', '));
+        }
+
+        const dataRows = allRows.slice(headerRowIndex + 1);
+
+        return dataRows.map(row => {
+            if (row.every(cell => !cell || !String(cell).trim())) return null;
+            const product = {};
+            originalHeaders.forEach((headerName, index) => {
+                if (headerName && index < row.length) {
+                    product[headerName] = row[index];
+                }
+            });
+            return product;
+        }).filter(p => p !== null);
+    }
+
+    throw new Error("Invalid CSV Parser config: must include requiredHeaders or columnMapping");
+}
+`;
+
+// Singleton worker management
+let worker: Worker | null = null;
+const pendingMap = new Map<string, { resolve: (data: any) => void, reject: (err: any) => void }>();
+
+export const parseCsvInWorker = (text: string, config: any): Promise<any[]> => {
+    // Initialize worker if it doesn't exist
+    if (!worker) {
+        const blob = new Blob([workerCode], { type: 'application/javascript' });
+        worker = new Worker(URL.createObjectURL(blob));
+        
         worker.onmessage = (e) => {
-            if (e.data.success) resolve(e.data.data);
-            else reject(new Error(e.data.error));
-            worker.terminate();
+            const { id, success, data, error } = e.data;
+            const resolver = pendingMap.get(id);
+            if (resolver) {
+                if (success) {
+                    resolver.resolve(data);
+                } else {
+                    resolver.reject(new Error(error));
+                }
+                pendingMap.delete(id);
+            }
         };
-        worker.onerror = (err) => {
-            reject(err);
-            worker.terminate();
+        
+        worker.onerror = (e) => {
+            console.error("Worker fatal error", e);
         };
-        worker.postMessage({ text, config });
+    }
+
+    const id = Math.random().toString(36).substr(2, 9);
+    return new Promise((resolve, reject) => {
+        pendingMap.set(id, { resolve, reject });
+        worker!.postMessage({ text, config, id });
     });
 };
-
-function internalParseCSV(Papa: any, text: string, config: any) {
-    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-    const pConfig: any = { skipEmptyLines: 'greedy' };
-    if (config.delimiter) pConfig.delimiter = config.delimiter;
-    
-    const parseResult = Papa.parse(text, pConfig);
-    const allRows = parseResult.data;
-    if (!allRows || allRows.length === 0) return [];
-
-    if (config.columnMapping) {
-        const headers = config.columnMapping;
-        return allRows.slice(1).map(row => {
-            const obj: any = {};
-            headers.forEach((h, i) => { if(h && i < row.length) obj[h] = row[i]; });
-            return obj;
-        }).filter((o: any) => Object.values(o).some(v => v));
-    }
-
-    let headerIdx = -1;
-    if (config.requiredHeaders) {
-        const req = config.requiredHeaders.map((h: string) => h.toLowerCase());
-        headerIdx = allRows.findIndex((row: any[]) => {
-            const r = row.map(c => String(c || '').toLowerCase().trim());
-            return req.every(h => r.includes(h));
-        });
-    }
-
-    if (headerIdx === -1) {
-        const keywords = ['brand', 'sku', 'price', 'pret'];
-        headerIdx = allRows.findIndex((row: any[]) => {
-            const r = row.map(c => String(c || '').toLowerCase());
-            return keywords.some(kw => r.some(cell => cell.includes(kw)));
-        });
-    }
-
-    if (headerIdx === -1) headerIdx = 0;
-
-    const headers = allRows[headerIdx].map((h: any) => String(h || '').trim());
-    return allRows.slice(headerIdx + 1).map((row: any[]) => {
-        const obj: any = {};
-        headers.forEach((h, i) => { if(h && i < row.length) obj[h] = row[i]; });
-        return obj;
-    }).filter((o: any) => Object.values(o).some(v => v));
-}
