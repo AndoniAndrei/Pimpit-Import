@@ -2,6 +2,7 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- 2. Cleanup (Stergem tabelele vechi daca exista pentru a recrea structura corecta)
+-- Folosim CASCADE pentru a sterge si dependintele (indexi, policy-uri)
 DROP FUNCTION IF EXISTS truncate_products();
 DROP TABLE IF EXISTS public.products CASCADE;
 DROP TABLE IF EXISTS public.sync_status CASCADE;
@@ -23,7 +24,7 @@ CREATE TABLE public.products (
     size text,
     width text,
     pcd text,
-    et text, -- AM REDENUMIT "offset" IN "et" PENTRU A EVITA EROAREA DE SINTAXA
+    et text, -- Aceasta este coloana pentru Offset. O numim "et" pentru a evita conflicte SQL.
     finish text,
     product_type text,
     
@@ -53,6 +54,7 @@ INSERT INTO public.sync_status (id, last_synced_at, is_syncing)
 VALUES (1, to_timestamp(0), false);
 
 -- 6. Helper Function for Fast Truncation
+-- Aceasta functie permite stergerea rapida a tuturor produselor inainte de sincronizare
 CREATE OR REPLACE FUNCTION truncate_products()
 RETURNS void AS $$
 BEGIN
@@ -61,6 +63,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 7. RLS Policies (Row Level Security) - Public Access
+-- Aceste reguli permit aplicatiei sa citeasca si sa scrie in baza de date
 ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sync_status ENABLE ROW LEVEL SECURITY;
 
