@@ -1,51 +1,49 @@
 
 import { DataSource, Product } from '../types';
-import { normalizeProductAttributes } from '../utils/productUtils';
+import { normalizeProductAttributes, getProp } from '../utils/productUtils';
 
-const map = async (data: Product[]): Promise<Product[]> => {
-  const initialProducts = data
-    // RULE: Relaxed filter. We check for ArticleId. 
-    // Removed strict check for 'BoltCirlce' as Dirt wheels often miss this field.
-    .filter(p => p && p.ArticleId)
+const map = async (data: any): Promise<Product[]> => {
+  const articles = Array.isArray(data) ? data : (data?.Articles || []);
+  if (!Array.isArray(articles)) return [];
+
+  const initialProducts = articles
+    .filter(p => p && (getProp(p, 'ArticleId') || getProp(p, 'Id')))
     .map(p => {
-      // Price Calculation: (((((pret achizitie * 4)+1080)*1.21)*1.4)/4)*0.48
-      const purchasePriceStr = String(p.Price || '0').replace(',', '.');
-      const purchasePrice = parseFloat(purchasePriceStr) || 0;
-      const calculatedPrice = Math.round((((((purchasePrice * 4) + 1080) * 1.21) * 1.4) / 4) * 0.48);
+      const rawPrice = getProp(p, 'NettPrice') || getProp(p, 'Price') || 0;
+      const purchasePrice = parseFloat(String(rawPrice).replace(',', '.')) || 0;
+      
+      // Formula spec: (((((M cell value *4)+1080)*1.21)*1.4)/4)*0.48
+      const calculatedPrice = purchasePrice > 0 
+        ? Math.round((((((purchasePrice * 4) + 1080) * 1.21) * 1.4) / 4) * 0.48)
+        : 0;
 
-      // PCD combination from 'Number of bolts' and 'BoltCirlce'
-      // We check both spellings 'BoltCirlce' (API typo) and 'BoltCircle' (Correct)
-      const numberOfBolts = String(p['Number of bolts'] || '').trim();
-      const boltCircleRaw = p.BoltCirlce || p.BoltCircle || '';
-      const boltCircle = String(boltCircleRaw).trim();
-      const pcd = (numberOfBolts && boltCircle) ? `${numberOfBolts}x${boltCircle}` : '';
+      const numberOfBolts = String(getProp(p, 'Number of bolts') || getProp(p, 'NumberOfBolts') || '').trim();
+      const boltCircle = String(getProp(p, 'BoltCirlce') || getProp(p, 'BoltCircle') || '').trim();
+      const pcd = (numberOfBolts && boltCircle) ? `${numberOfBolts}x${boltCircle}` : boltCircle;
 
-      // Image URL is constructed from ImageId, as seen in the API response.
-      const imageUrl = p.ImageId ? `https://api.statusfalgar.se/api/Images/${p.ImageId}` : undefined;
-
-      // NOTE: Stock information (QuantityAvailable) is not present in this API endpoint.
-      // It requires a separate call to /api/Stock. For now, stock will be 0.
-      const stock = parseInt(String(p.QuantityAvailable), 10) || 0;
+      const brand = getProp(p, 'Brand Name') || getProp(p, 'BrandName') || 'Unknown Brand';
+      const model = getProp(p, 'Model Name') || getProp(p, 'ModelName') || '';
+      const imageId = getProp(p, 'ImageId') || getProp(p, 'MainImageId');
+      const imageUrl = imageId ? `https://api.statusfalgar.se/api/Images/${imageId}` : undefined;
 
       const product: Product = {
-        PartNumber: p.ArticleId,
-        PartDescription: p['Article Text'],
-        Brand: p['Brand Name'],
-        Model: p['Model Name'],
-        Finish: p.Color,
-        Width: p.Width,
-        Size: p.Diameter,
+        PartNumber: getProp(p, 'ArticleId') || getProp(p, 'Id'),
+        PartDescription: getProp(p, 'Article Text') || `${brand} ${model}`.trim(),
+        Brand: brand,
+        Model: model,
+        Finish: getProp(p, 'Color') || getProp(p, 'Finish'),
+        Width: getProp(p, 'Width'),
+        Size: getProp(p, 'Diameter') || getProp(p, 'Size'),
         PCD: pcd,
-        Offset: p.offset,
-        CB: p.CenterBore,
-        Load: p.LoadRating,
-        IsWinterApproved: p.IsWinterApproved,
-        Stock: stock,
+        Offset: getProp(p, 'offset') || getProp(p, 'ET'),
+        CB: getProp(p, 'CenterBore') || getProp(p, 'CH'),
+        Load: getProp(p, 'LoadRating') || getProp(p, 'MaxLoad'),
+        Stock: parseInt(String(getProp(p, 'QuantityAvailable') || getProp(p, 'Stock') || 0), 10) || 0,
         Price: calculatedPrice,
         ImageUrl: imageUrl,
         ImageUrls: imageUrl ? [imageUrl] : [],
         Source: 'Sursa 6',
-        ProductType: 'Jante', // We are filtering for wheels, so this is correct.
+        ProductType: 'Jante',
       };
       
       return product;
@@ -54,30 +52,9 @@ const map = async (data: Product[]): Promise<Product[]> => {
     return initialProducts.map(product => normalizeProductAttributes(product));
 };
 
-const fetcher = async (): Promise<Response> => {
-    const proxyUrl = '/api/source6';
-    try {
-        const response = await fetch(proxyUrl, { cache: 'no-store' });
-        if (!response.ok) {
-            let errorDetails = `Proxy-ul pentru Sursa 6 a eșuat (status: ${response.status}).`;
-            try {
-                const errorData = await response.json();
-                errorDetails = errorData.details || errorData.error || errorDetails;
-            } catch (e) { /* ignore if response is not json */ }
-            throw new Error(errorDetails);
-        }
-        return response;
-    } catch (error) {
-        console.error("Eroare la încărcarea Sursei 6:", error);
-        const message = error instanceof Error ? error.message : 'Eroare necunoscută.';
-        throw new Error(`Nu s-a putut încărca Sursa 6. Motiv: ${message}`);
-    }
-};
-
 export const source6: DataSource = {
   name: 'Sursa 6',
-  type: 'json', // The API now returns JSON
-  fetcher,
-  // parserConfig is no longer needed for JSON type
+  type: 'json',
+  fetcher: async () => fetch('/api/source6', { cache: 'no-store' }),
   map,
 };
