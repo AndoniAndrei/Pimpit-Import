@@ -180,15 +180,36 @@ const App: React.FC = () => {
                         <button
                           onClick={async () => {
                             try {
-                              const res = await fetch('/api/admin/trigger-sync', { method: 'POST' });
+                              const res = await fetch('/api/admin/trigger-sync', { 
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  'Accept': 'application/json'
+                                }
+                              });
+                              
+                              if (!res.ok) {
+                                const errorText = await res.text();
+                                let errorMsg = `Serverul a răspuns cu status ${res.status}`;
+                                try {
+                                  const errorJson = JSON.parse(errorText);
+                                  errorMsg = errorJson.error || errorJson.message || errorMsg;
+                                } catch (parseErr) {
+                                  errorMsg = errorText || errorMsg;
+                                }
+                                alert('Eroare la pornirea sincronizării: ' + errorMsg);
+                                return;
+                              }
+
                               const data = await res.json();
                               if (data.success) {
                                 alert('Sincronizarea a pornit în fundal. Vă rugăm să reveniți în câteva minute.');
                               } else {
-                                alert('Eroare la pornirea sincronizării: ' + data.error);
+                                alert('Eroare la pornirea sincronizării: ' + (data.error || 'Eroare necunoscută'));
                               }
                             } catch (e) {
-                              alert('Eroare de rețea la pornirea sincronizării.');
+                              console.error("Fetch error:", e);
+                              alert('Eroare de rețea la pornirea sincronizării. Verificați consola browserului pentru detalii.');
                             }
                           }}
                           className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500"

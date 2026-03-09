@@ -9,6 +9,7 @@ const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || '...';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export const runSyncPipeline = async () => {
+    console.log("[SMOKE TEST] runSyncPipeline INVOCATION START");
     console.log("[DIAGNOSTIC] SYNC START");
     // 1. Create sync_run
     const { data: syncRun, error: syncRunError } = await supabase

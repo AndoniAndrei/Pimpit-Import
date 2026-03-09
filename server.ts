@@ -20,8 +20,16 @@ async function startServer() {
   });
 
   app.get("/api/diagnostic", async (req, res) => {
+    console.log("[DIAGNOSTIC] Request received");
     const results: any = {
       timestamp: new Date().toISOString(),
+      env_check: {
+        WHEELTRADE_API_KEY: !!process.env.WHEELTRADE_API_KEY,
+        ABS_API_KEY: !!process.env.ABS_API_KEY,
+        VITE_SUPABASE_URL: !!process.env.VITE_SUPABASE_URL,
+        VITE_SUPABASE_ANON_KEY: !!process.env.VITE_SUPABASE_ANON_KEY,
+        NODE_ENV: process.env.NODE_ENV
+      },
       tables: {},
       sync_status: {},
     };
@@ -99,16 +107,38 @@ async function startServer() {
 
       res.json(results);
     } catch (error: any) {
+      console.error("[DIAGNOSTIC] Error:", error);
       res.status(500).json({ error: error.message });
     }
   });
 
   app.post("/api/admin/trigger-sync", async (req, res) => {
-    console.log("[SERVER] Trigger sync requested");
-    // Run in background to avoid timeout
-    runSyncPipeline().catch(err => console.error("[SERVER] Sync pipeline error:", err));
+    console.log("[SMOKE TEST] TRIGGER ROUTE HIT");
+    console.log("[SMOKE TEST] METHOD RECEIVED:", req.method);
     
-    res.json({ success: true, message: 'Sync started in background' });
+    try {
+      console.log("[SMOKE TEST] REQUEST ACCEPTED - Scheduling sync");
+      
+      // Run in background
+      runSyncPipeline()
+        .then(() => console.log("[SMOKE TEST] SYNC PIPELINE FINISHED SUCCESSFULY"))
+        .catch(err => console.error("[SMOKE TEST] SYNC START FAILED (Pipeline Error):", err));
+      
+      console.log("[SMOKE TEST] RESPONSE SENT TO CLIENT");
+      res.status(202).json({ 
+        success: true, 
+        message: 'Sincronizarea a fost programată și rulează în fundal.',
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: any) {
+      console.error("[SMOKE TEST] TRIGGER FAILED:", error);
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // Also allow GET for easier testing via browser
+  app.get("/api/admin/trigger-sync", (req, res) => {
+    res.status(405).json({ error: "Folosiți metoda POST pentru a declanșa sincronizarea." });
   });
 
   // Vite middleware for development
