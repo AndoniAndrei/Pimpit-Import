@@ -2,8 +2,9 @@
 
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
+import { calculateFinalPrice, PricingRule } from '../utils/pricing/calculateFinalPrice';
 
-const map = async (data: Product[]): Promise<Product[]> => {
+const map = async (data: any[], pricingRule?: PricingRule): Promise<Product[]> => {
   const initialProducts = data
     .filter(p => p && p.Articlecode && String(p.Articlecode).trim() !== '')
     // REMOVED: The filter excluding 'dirt' products has been removed to allow all inventory.
@@ -11,7 +12,19 @@ const map = async (data: Product[]): Promise<Product[]> => {
       // Price Calculation: ((((pret de achizitie*4)*1.21)*1.4)*5)/4
       const purchasePriceStr = String(p['Nett-price'] || '0').replace(',', '.');
       const purchasePrice = parseFloat(purchasePriceStr) || 0;
-      const calculatedPrice = Math.round(((((purchasePrice * 4) * 1.21) * 1.4) * 5) / 4);
+      const oldCalculatedPrice = Math.round(((((purchasePrice * 4) * 1.21) * 1.4) * 5) / 4);
+
+      let finalPrice = oldCalculatedPrice;
+
+      if (pricingRule) {
+          const result = calculateFinalPrice(purchasePrice, pricingRule);
+          if (result.isValid) {
+              if (result.finalPrice !== oldCalculatedPrice) {
+                  console.warn(`[Shadow Pricing] Sursa 5: Old ${oldCalculatedPrice} != New ${result.finalPrice} for raw ${purchasePrice}`);
+              }
+              // finalPrice = result.finalPrice; // Shadow mode
+          }
+      }
 
       const imageUrl = p['URL-to-photo'];
       const imageUrls = imageUrl ? [imageUrl] : [];
@@ -68,7 +81,7 @@ const map = async (data: Product[]): Promise<Product[]> => {
         Offset: p.Offset,
         CB: p.Centerhole,
         Stock: parseInt(String(p.Stock), 10) || 0,
-        Price: calculatedPrice,
+        Price: finalPrice,
         ImageUrl: imageUrl,
         ImageUrls: imageUrls,
         Source: 'Sursa 5',
@@ -82,6 +95,13 @@ const map = async (data: Product[]): Promise<Product[]> => {
 };
 
 const fetcher = async (): Promise<Response> => {
+    if (typeof window === 'undefined') {
+        const apiKey = process.env.ABS_API_KEY;
+        if (!apiKey) throw new Error("ABS_API_KEY missing");
+        const targetUrl = `https://b2b.abswheels.se/api/v1/products/export?token=${apiKey}`;
+        return fetch(targetUrl, { headers: { 'User-Agent': 'Pimpit-B2B-Catalog-Proxy/1.0' }});
+    }
+
     const proxyUrl = '/api/abswheels';
     try {
         const response = await fetch(proxyUrl, { cache: 'no-store' });

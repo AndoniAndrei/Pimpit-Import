@@ -1,6 +1,7 @@
 
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
+import { calculateFinalPrice, PricingRule } from '../utils/pricing/calculateFinalPrice';
 
 // --- CONFIGURATION ---
 
@@ -34,7 +35,7 @@ interface StatusArticle {
     RecyclingFee: number;
 }
 
-const map = async (data: any): Promise<Product[]> => {
+const map = async (data: any, pricingRule?: PricingRule): Promise<Product[]> => {
     // The API returns a direct array of objects based on the docs sample.
     // We handle cases where it might be wrapped, just to be safe.
     const rawArticles: StatusArticle[] = Array.isArray(data) ? data : (data?.Articles || []);
@@ -64,10 +65,22 @@ const map = async (data: any): Promise<Product[]> => {
         // 3. Price Calculation
         // Formula: (((((Price * 4) + 1080) * 1.21) * 1.4) / 4) * 0.48
         const basePrice = Number(item.Price) || 0;
-        let calculatedPrice = 0;
+        let oldCalculatedPrice = 0;
         
         if (basePrice > 0) {
-             calculatedPrice = Math.round((((((basePrice * 4) + 1080) * 1.21) * 1.4) / 4) * 0.48);
+             oldCalculatedPrice = Math.round((((((basePrice * 4) + 1080) * 1.21) * 1.4) / 4) * 0.48);
+        }
+
+        let finalPrice = oldCalculatedPrice;
+
+        if (pricingRule) {
+            const result = calculateFinalPrice(basePrice, pricingRule);
+            if (result.isValid) {
+                if (result.finalPrice !== oldCalculatedPrice) {
+                    console.warn(`[Shadow Pricing] Sursa 6: Old ${oldCalculatedPrice} != New ${result.finalPrice} for raw ${basePrice}`);
+                }
+                // finalPrice = result.finalPrice; // Shadow mode
+            }
         }
 
         // 4. PCD Construction
@@ -104,7 +117,7 @@ const map = async (data: any): Promise<Product[]> => {
             CB: String(item.CenterBore),
             Load: String(item.LoadRating),
             Stock: Number(item.QuantityAvailable) || 0,
-            Price: calculatedPrice,
+            Price: finalPrice,
             ImageUrl: imageUrl,
             ImageUrls: imageUrl ? [imageUrl] : [],
             Source: 'Sursa 6',
@@ -118,9 +131,40 @@ const map = async (data: any): Promise<Product[]> => {
     return processedProducts.map(p => normalizeProductAttributes(p));
 };
 
+const fetcher = async (): Promise<Response> => {
+    if (typeof window === 'undefined') {
+        const BASE_URL = 'https://api.statusfalgar.se/api/Articles';
+        const PARAMS = new URLSearchParams({
+            OnlyLocalStockItems: 'false',
+            IncludeCarTyres: 'false',
+            IncludeAlloyRims: 'true',
+            IncludeSteelRims: 'true',
+            IncludeAccessories: 'false'
+        });
+        const DATA_URL = `${BASE_URL}?${PARAMS.toString()}`;
+        
+        // Use environment variables if available, otherwise fallback to known credentials
+        const customerId = process.env.STATUSFALGAR_CUSTOMER_ID || '5432';
+        const token = process.env.STATUSFALGAR_TOKEN || 'BSzMrDxAzojUYyGVvXZL3G3Bci0d0PsxRXWq';
+        const authString = `${customerId}:${token}`;
+        const encodedAuth = btoa(authString); 
+
+        return fetch(DATA_URL, {
+            headers: {
+                'User-Agent': 'Pimpit-B2B-Catalog-Proxy/2.0',
+                'Authorization': `Basic ${encodedAuth}`,
+                'Accept': 'application/json'
+            },
+            cache: 'no-store',
+        });
+    }
+
+    return fetch('/api/source6', { cache: 'no-store' });
+};
+
 export const source6: DataSource = {
   name: 'Sursa 6',
   type: 'json',
-  fetcher: async () => fetch('/api/source6', { cache: 'no-store' }),
+  fetcher,
   map,
 };

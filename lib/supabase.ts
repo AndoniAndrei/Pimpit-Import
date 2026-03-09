@@ -16,18 +16,18 @@ export const checkSupabaseConnection = async (): Promise<{ success: boolean; mes
     }
     try {
         // We do a lightweight check. 'head: true' returns only headers/count, no data.
-        // This validates connection AND that the 'products' table exists.
-        const { error } = await supabase.from('products').select('count', { count: 'exact', head: true });
+        // This validates connection AND that the 'published_catalog_products' table exists.
+        const { error } = await supabase.from('published_catalog_products').select('count', { count: 'exact', head: true });
         
         if (error) {
             console.error("[Supabase] Connection Error Object:", error);
             
             // Error code 42P01 means 'undefined_table' (table missing)
             if (error.code === '42P01') {
-                console.warn("[Supabase] Table 'products' is missing.");
+                console.warn("[Supabase] Table 'published_catalog_products' is missing.");
                 return { 
                     success: false, 
-                    message: "Conectat la Supabase, dar tabelul 'products' lipsește. Te rog rulează conținutul fișierului 'schema.sql' în SQL Editor din Supabase." 
+                    message: "Conectat la Supabase, dar tabelul 'published_catalog_products' lipsește. Te rog rulează conținutul fișierului 'schema.sql' în SQL Editor din Supabase." 
                 };
             }
             return { success: false, message: `Eroare conexiune Supabase: ${error.message} (Cod: ${error.code})` };

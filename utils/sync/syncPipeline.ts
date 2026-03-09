@@ -9,6 +9,7 @@ const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || '...';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export const runSyncPipeline = async () => {
+    console.log("[DIAGNOSTIC] SYNC START");
     // 1. Create sync_run
     const { data: syncRun, error: syncRunError } = await supabase
         .from('sync_runs')
@@ -36,9 +37,14 @@ export const runSyncPipeline = async () => {
     let totalRaw = 0;
     let totalValid = 0;
     let totalInvalid = 0;
+    let failedSourcesCount = 0;
 
     // 3. Process each source
+    const CRITICAL_SOURCES = ['Sursa 3', 'Sursa 4', 'Sursa 7']; // Exemplu
+    const sourceStatus: Record<string, boolean> = {};
+
     for (const source of allSources) {
+        console.log(`[DIAGNOSTIC] SOURCE START: ${source.name}`);
         let sourceRawCount = 0;
         let sourceValidCount = 0;
         let sourceInvalidCount = 0;
@@ -111,9 +117,13 @@ export const runSyncPipeline = async () => {
                     invalid_price_count: sourceInvalidCount
                 }).eq('id', syncSource.id);
             }
+            sourceStatus[source.name] = true;
+            console.log(`[DIAGNOSTIC] SOURCE SUCCESS ${source.name}: brute=${sourceRawCount}, valide=${sourceValidCount}`);
 
         } catch (error: any) {
-            console.error(`Error syncing ${source.name}:`, error);
+            console.error(`[DIAGNOSTIC] SOURCE FAIL ${source.name}:`, error.message);
+            failedSourcesCount++;
+            sourceStatus[source.name] = false;
             if (syncSource) {
                 await supabase.from('sync_run_sources').update({
                     status: 'failed',
@@ -142,9 +152,38 @@ export const runSyncPipeline = async () => {
     });
 
     const finalProducts = Array.from(deduplicatedMap.values());
+    console.log(`[DIAGNOSTIC] DEDUP SUMMARY: ${globalValidProducts.length} -> ${finalProducts.length}`);
 
-    // 5. Publish to published_catalog_products
-    await supabase.rpc('truncate_published_products');
+    // 5. Strict Validation Before Publish
+    // Do not publish if too many sources failed or total products is suspiciously low
+    const CRITICAL_SOURCES = ['Sursa 3', 'Sursa 4', 'Sursa 7'];
+    const criticalSourceFailed = CRITICAL_SOURCES.some(name => sourceStatus[name] === false);
+    
+    const MIN_EXPECTED_PRODUCTS = 10000;
+
+    if (criticalSourceFailed || finalProducts.length < MIN_EXPECTED_PRODUCTS) {
+        const errorMsg = `PUBLISH REFUZAT: Critical source failed (${criticalSourceFailed}) or too few products (${finalProducts.length}). Existing catalog was NOT modified.`;
+        console.error(`[DIAGNOSTIC] SYNC: ${errorMsg}`);
+        
+        await supabase.from('sync_runs').update({
+            status: 'failed',
+            finished_at: new Date().toISOString(),
+            total_raw_products: totalRaw,
+            total_valid_products: totalValid,
+            total_invalid_products: totalInvalid,
+            error_summary: errorMsg
+        }).eq('id', syncRun.id);
+        
+        return; // Abort here, do not truncate
+    }
+
+    console.log(`[DIAGNOSTIC] PUBLISH START: ${finalProducts.length} produse`);
+    // 6. Publish to published_catalog_products
+    const { error: truncError } = await supabase.rpc('truncate_published_products');
+    if (truncError) {
+        console.error("[DIAGNOSTIC] PUBLISH ERROR (Truncate):", truncError);
+        throw new Error(`Truncate failed: ${truncError.message}`);
+    }
     
     // Insert in batches
     const dbRows = finalProducts.map(p => {
@@ -189,11 +228,13 @@ export const runSyncPipeline = async () => {
         if (!insError) {
             insertedCount += batch.length;
         } else {
-            console.error("Batch insert error", insError);
+            console.error(`[DIAGNOSTIC] PUBLISH ERROR (Batch ${i}):`, insError);
         }
     }
 
-    // 6. Update sync run
+    console.log(`[DIAGNOSTIC] PUBLISH EXECUTAT: ${insertedCount} produse inserate`);
+
+    // 7. Update sync run
     await supabase.from('sync_runs').update({
         status: 'completed',
         finished_at: new Date().toISOString(),

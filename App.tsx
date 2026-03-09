@@ -173,8 +173,35 @@ const App: React.FC = () => {
                       {isAnyFilterActive ? 'Niciun produs nu corespunde filtrelor' : 'Niciun produs disponibil'}
                     </h3>
                     <p className="mt-2 text-gray-600">
-                      {isAnyFilterActive ? 'Încercați să modificați termenii de căutare sau să resetați filtrele.' : 'Se descarcă produsele din server...'}
+                      {isAnyFilterActive ? 'Încercați să modificați termenii de căutare sau să resetați filtrele.' : 'Catalogul public este gol. Vă rugăm să rulați sincronizarea.'}
                     </p>
+                    {!isAnyFilterActive && products.length === 0 && (
+                      <div className="mt-6">
+                        <button
+                          onClick={async () => {
+                            try {
+                              const res = await fetch('/api/admin/trigger-sync', { method: 'POST' });
+                              const data = await res.json();
+                              if (data.success) {
+                                alert('Sincronizarea a pornit în fundal. Vă rugăm să reveniți în câteva minute.');
+                              } else {
+                                alert('Eroare la pornirea sincronizării: ' + data.error);
+                              }
+                            } catch (e) {
+                              alert('Eroare de rețea la pornirea sincronizării.');
+                            }
+                          }}
+                          className="px-6 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm font-semibold shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                        >
+                          Sincronizează Acum
+                        </button>
+                        <div className="mt-4">
+                          <a href="/api/diagnostic" target="_blank" className="text-blue-600 hover:underline text-sm">
+                            Vezi Diagnostic Sync
+                          </a>
+                        </div>
+                      </div>
+                    )}
                     {isAnyFilterActive && (
                       <div className="mt-6">
                         <button

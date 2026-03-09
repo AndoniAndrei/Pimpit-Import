@@ -1,8 +1,9 @@
 
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
+import { calculateFinalPrice, PricingRule } from '../utils/pricing/calculateFinalPrice';
 
-const map = async (data: Product[]): Promise<Product[]> => {
+const map = async (data: any[], pricingRule?: PricingRule): Promise<Product[]> => {
   const initialProducts = data
     .filter(p => p && p['Item Code'] && String(p['Item Code']).trim() !== '')
     .map(p => {
@@ -10,11 +11,23 @@ const map = async (data: Product[]): Promise<Product[]> => {
       const rrpStr = String(p['RRP'] || '0').replace(',', '.');
       const rrp = parseFloat(rrpStr) || 0;
       // Formula: (((((rrp-(0.2*rrp)*4)+100)*1.21)*1.4)*5.78)/4
-      const calculatedPrice = Math.round((((((rrp - (0.2 * rrp)) * 4) + 100) * 1.21) * 1.4) * 5.78 / 4);
+      const oldCalculatedPrice = Math.round((((((rrp - (0.2 * rrp)) * 4) + 100) * 1.21) * 1.4) * 5.78 / 4);
+
+      let finalPrice = oldCalculatedPrice;
+
+      if (pricingRule) {
+          const result = calculateFinalPrice(rrp, pricingRule);
+          if (result.isValid) {
+              if (result.finalPrice !== oldCalculatedPrice) {
+                  console.warn(`[Shadow Pricing] Sursa 7: Old ${oldCalculatedPrice} != New ${result.finalPrice} for raw ${rrp}`);
+              }
+              // finalPrice = result.finalPrice; // Shadow mode
+          }
+      }
 
       // Calculate Old Price (RRP in RON) - using 5.78 from formula
       const oldPriceRon = rrp * 5.78;
-      const displayOldPrice = (oldPriceRon > calculatedPrice) ? oldPriceRon : undefined;
+      const displayOldPrice = (oldPriceRon > finalPrice) ? oldPriceRon : undefined;
 
       // 2. Size splitting (e.g., "19x8.5")
       const sizeStr = String(p['Size'] || '').trim();
@@ -42,7 +55,7 @@ const map = async (data: Product[]): Promise<Product[]> => {
         CB: p['Centre Bore'],
         Load: p['Load Rating'],
         Stock: stock,
-        Price: calculatedPrice,
+        Price: finalPrice,
         OldPrice: displayOldPrice ? Math.round(displayOldPrice) : undefined,
         ImageUrl: imageUrl,
         ImageUrls: imageUrl ? [imageUrl] : [],
@@ -57,6 +70,11 @@ const map = async (data: Product[]): Promise<Product[]> => {
 };
 
 const fetcher = async (): Promise<Response> => {
+    if (typeof window === 'undefined') {
+        const targetUrl = 'https://shop.veemann.com/amfeed/feed/download?id=13&file=veemanndealer.csv';
+        return fetch(targetUrl, { headers: { 'User-Agent': 'Pimpit-B2B-Catalog-Proxy/1.0' }});
+    }
+
     const proxyUrl = '/api/source7';
     try {
         const response = await fetch(proxyUrl, { cache: 'no-store' });
