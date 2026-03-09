@@ -1,8 +1,9 @@
 
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
+import { calculateFinalPrice, PricingRule } from '../utils/pricing/calculateFinalPrice';
 
-const map = async (data: Product[]): Promise<Product[]> => {
+const map = async (data: any[], pricingRule?: PricingRule): Promise<Product[]> => {
   const initialProducts = data
     .filter(p => p && p.part_number)
     .map(p => {
@@ -30,10 +31,22 @@ const map = async (data: Product[]): Promise<Product[]> => {
         finalPriceRon = minMarginPriceRon;
       }
 
+      let finalPrice = Math.round(finalPriceRon);
+
+      if (pricingRule) {
+          const result = calculateFinalPrice(yourNetPriceEur, pricingRule);
+          if (result.isValid) {
+              if (result.finalPrice !== finalPrice) {
+                  console.warn(`[Shadow Pricing] Sursa 3: Old ${finalPrice} != New ${result.finalPrice} for raw ${yourNetPriceEur}`);
+              }
+              // finalPrice = result.finalPrice; // Shadow mode
+          }
+      }
+
       // Calculate Old Price (RRP in RON) - assuming exchange rate of 5 used elsewhere
       const oldPriceRon = suggestedPriceEur > 0 ? suggestedPriceEur * 5 : 0;
       // Only set OldPrice if the calculated sell price is actually lower than the RRP
-      const displayOldPrice = (oldPriceRon > finalPriceRon) ? oldPriceRon : undefined;
+      const displayOldPrice = (oldPriceRon > finalPrice) ? oldPriceRon : undefined;
 
 
       // 2. Image Aggregation
@@ -62,7 +75,7 @@ const map = async (data: Product[]): Promise<Product[]> => {
         Offset: p.et || extractedOffset,
         CB: p.center_bore,
         Stock: Math.floor(parseFloat(String(p.stock || '0').replace(',', '.'))) || 0,
-        Price: Math.round(finalPriceRon),
+        Price: finalPrice,
         OldPrice: displayOldPrice ? Math.round(displayOldPrice) : undefined,
         Source: 'Sursa 3',
         ProductType: productType,
@@ -89,6 +102,14 @@ const map = async (data: Product[]): Promise<Product[]> => {
  * This function calls a local API endpoint which handles the API key securely.
  */
 const fetcher = async (): Promise<Response> => {
+    // If running on server (Node.js), fetch directly
+    if (typeof window === 'undefined') {
+        const apiKey = process.env.WHEELTRADE_API_KEY;
+        if (!apiKey) throw new Error("WHEELTRADE_API_KEY missing");
+        const targetUrl = `https://b2b.wheeltrade.pl/en/xmlapi/7/2/utf8_withoutbom/${apiKey}?stream=true`;
+        return fetch(targetUrl, { headers: { 'User-Agent': 'Pimpit-B2B-Catalog-Proxy/1.0' }});
+    }
+
     const proxyUrl = '/api/wheeltrade';
 
     try {

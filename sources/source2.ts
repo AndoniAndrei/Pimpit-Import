@@ -1,6 +1,7 @@
 
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
+import { calculateFinalPrice, PricingRule } from '../utils/pricing/calculateFinalPrice';
 
 // Helper to get value case-insensitively
 const getVal = (item: any, key: string): string => {
@@ -11,7 +12,7 @@ const getVal = (item: any, key: string): string => {
 };
 
 // Maps data from the second source, calculates price, and unifies structure
-const map = async (data: Product[]): Promise<Product[]> => {
+const map = async (data: any[], pricingRule?: PricingRule): Promise<Product[]> => {
   const initialProducts = data
     .filter(p => {
         const uid = getVal(p, 'UID');
@@ -22,8 +23,20 @@ const map = async (data: Product[]): Promise<Product[]> => {
       const priceBase = parseFloat(priceBaseStr) || 0;
       
       // -> (((((M cell value *4)+80)*1.21)*1.43)/4)*6 -> rezultatul este pretul in lei afisat pe platforma, rotunjeste.
-      const calculatedPrice = Math.round((((((priceBase * 4) + 80) * 1.21) * 1.43) * 6) / 4);
+      const oldCalculatedPrice = Math.round((((((priceBase * 4) + 80) * 1.21) * 1.43) * 6) / 4);
       
+      let finalPrice = oldCalculatedPrice;
+
+      if (pricingRule) {
+          const result = calculateFinalPrice(priceBase, pricingRule);
+          if (result.isValid) {
+              if (result.finalPrice !== oldCalculatedPrice) {
+                  console.warn(`[Shadow Pricing] Sursa 2: Old ${oldCalculatedPrice} != New ${result.finalPrice} for raw ${priceBase}`);
+              }
+              // finalPrice = result.finalPrice; // Shadow mode
+          }
+      }
+
       const brand = getVal(p, 'BRAND');
       const design = getVal(p, 'DESIGN');
       const colour = getVal(p, 'COLOUR');
@@ -50,7 +63,7 @@ const map = async (data: Product[]): Promise<Product[]> => {
         ImageUrl: imageUrl,
         ImageUrls: imageUrl ? [imageUrl] : [],
         Stock: parseInt(getVal(p, 'TOTAL STOCK'), 10) || 0,
-        Price: calculatedPrice,
+        Price: finalPrice,
         Source: 'Sursa 2',
         ProductType: 'Jante',
       };

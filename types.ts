@@ -1,4 +1,6 @@
 
+import { PricingRule } from './utils/pricing/calculateFinalPrice';
+
 export interface Product {
   id?: string; // Database ID (UUID)
   [key: string]: any;
@@ -51,7 +53,7 @@ export interface DataSource {
   url?: string; // Made optional to support fetcher
   type?: 'csv' | 'xml' | 'json';
   parserConfig?: ParserConfig;
-  map: (data: any[]) => Promise<Product[]>; // Added custom fetcher for resilient sources
+  map: (data: any[], pricingRule?: PricingRule) => Promise<Product[]>; // Added custom fetcher for resilient sources
   fetcher?: () => Promise<Response>;
 }
 

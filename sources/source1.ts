@@ -1,15 +1,28 @@
 
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
+import { calculateFinalPrice, PricingRule } from '../utils/pricing/calculateFinalPrice';
 
 // Maps data from the first source to the unified product structure
-const map = async (data: Product[]): Promise<Product[]> => {
+const map = async (data: any[], pricingRule?: PricingRule): Promise<Product[]> => {
   const initialProducts = data
     .filter(p => p && p['PartNumber'] && String(p['PartNumber']).trim() !== '')
     .map(p => {
       const priceStr = String(p['Pret client in lei/buc'] || '0');
       let cleanValue = priceStr.replace(/[^0-9.,-]/g, '').replace(/\./g, '').replace(',', '.');
-      const price = parseFloat(cleanValue) || 0;
+      const rawPrice = parseFloat(cleanValue) || 0;
+
+      let finalPrice = rawPrice;
+
+      if (pricingRule) {
+          const result = calculateFinalPrice(rawPrice, pricingRule);
+          if (result.isValid) {
+              if (result.finalPrice !== rawPrice) {
+                  console.warn(`[Shadow Pricing] Sursa 1: Old ${rawPrice} != New ${result.finalPrice} for raw ${rawPrice}`);
+              }
+              // finalPrice = result.finalPrice; // Shadow mode
+          }
+      }
 
       const imageUrls = ['Image URL', 'Image URL 1', 'Image URL 2', 'Image URL 3', 'Image URL 4']
         .map(key => p[key])
@@ -49,7 +62,7 @@ const map = async (data: Product[]): Promise<Product[]> => {
         
         // Calculated and mapped fields
         Offset: p['Offset'] || extractedOffset, // Prioritize existing Offset column
-        Price: price,
+        Price: finalPrice,
         Stock: parseInt(p['7001'], 10) || 0,
         OnTheWaterStock: parseInt(p['On the water'], 10) || 0,
         ImageUrl: imageUrls[0],

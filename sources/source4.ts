@@ -1,8 +1,9 @@
 
 import { DataSource, Product } from '../types';
 import { normalizeProductAttributes } from '../utils/productUtils';
+import { calculateFinalPrice, PricingRule } from '../utils/pricing/calculateFinalPrice';
 
-const map = async (data: Product[]): Promise<Product[]> => {
+const map = async (data: any[], pricingRule?: PricingRule): Promise<Product[]> => {
   const initialProducts = data
     .filter(p => p && p['sku'] && String(p['sku']).trim() !== '')
     .map(p => {
@@ -10,7 +11,19 @@ const map = async (data: Product[]): Promise<Product[]> => {
       const purchasePriceStr = String(p['cena_zakupu_netto_eur'] || '0').replace(',', '.');
       const purchasePrice = parseFloat(purchasePriceStr) || 0;
       // Formula: (((((Pret achizitie * 4) + 70) * 1.21) * 1.35) * 5) / 4
-      const calculatedPrice = Math.round((((((purchasePrice * 4) + 70) * 1.21) * 1.35) * 5) / 4);
+      const oldCalculatedPrice = Math.round((((((purchasePrice * 4) + 70) * 1.21) * 1.35) * 5) / 4);
+
+      let finalPrice = oldCalculatedPrice;
+
+      if (pricingRule) {
+          const result = calculateFinalPrice(purchasePrice, pricingRule);
+          if (result.isValid) {
+              if (result.finalPrice !== oldCalculatedPrice) {
+                  console.warn(`[Shadow Pricing] Sursa 4: Old ${oldCalculatedPrice} != New ${result.finalPrice} for raw ${purchasePrice}`);
+              }
+              // finalPrice = result.finalPrice; // Shadow mode
+          }
+      }
 
       // 2. Stock Calculation
       const stockProducer = parseInt(String(p['stan_magazynowy_producenta']).trim(), 10) || 0;
@@ -41,7 +54,7 @@ const map = async (data: Product[]): Promise<Product[]> => {
         Offset: p['et'],
         CB: p['otwór'],
         Stock: totalStock,
-        Price: calculatedPrice,
+        Price: finalPrice,
         Weight: p['waga_netto_kg'],
         Load: p['nośność'],
         ProductionMethod: p['technologia_produkcji'], // Custom field
@@ -60,6 +73,11 @@ const map = async (data: Product[]): Promise<Product[]> => {
 };
 
 const fetcher = async (): Promise<Response> => {
+    if (typeof window === 'undefined') {
+        const targetUrl = 'https://b2b.felgeo.pl/export/36/16/e060c213824f2b184f4751f0c293675a6c02';
+        return fetch(targetUrl, { headers: { 'User-Agent': 'Pimpit-B2B-Catalog-Proxy/1.0' }});
+    }
+
     const proxyUrl = '/api/felgeo';
 
     try {
