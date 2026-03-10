@@ -1,9 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://elfumzzbfrpqyaztxyee.supabase.co';
-const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
-
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {
     return res.status(405).json({ ok: false, status: "error", message: "Method Not Allowed" });
@@ -26,6 +22,23 @@ export default async function handler(req: any, res: any) {
   };
 
   try {
+    const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://elfumzzbfrpqyaztxyee.supabase.co';
+    const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY;
+
+    if (!supabaseKey || supabaseKey === '...') {
+      return res.status(500).json({
+        ok: false,
+        status: "error",
+        message: "Eroare de configurare server: Cheia Supabase lipsește.",
+        details: {
+          stage: "ENV_CHECK",
+          errorMessage: "VITE_SUPABASE_ANON_KEY is not defined or invalid in Vercel environment variables."
+        }
+      });
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
     // 1. Check published_catalog_products
     const { count: publishedCount, error: publishedError } = await supabase
       .from('published_catalog_products')

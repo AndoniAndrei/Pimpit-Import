@@ -1,4 +1,4 @@
-import Papa from 'papaparse';
+import * as Papa from 'papaparse';
 import { Product, ParserConfig } from '../types';
 
 export const parseCSVServer = (text: string, config: ParserConfig): Product[] => {
