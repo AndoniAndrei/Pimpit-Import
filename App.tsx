@@ -193,7 +193,13 @@ const App: React.FC = () => {
                                 let errorMsg = `Serverul a răspuns cu status ${res.status}`;
                                 try {
                                   const errorJson = JSON.parse(errorText);
-                                  errorMsg = errorJson.error || errorJson.message || errorMsg;
+                                  // Robust extraction of error message
+                                  const rawError = errorJson.error || errorJson.message || errorJson.details || errorText;
+                                  if (typeof rawError === 'object') {
+                                    errorMsg = rawError.message || rawError.error || JSON.stringify(rawError);
+                                  } else {
+                                    errorMsg = String(rawError);
+                                  }
                                 } catch (parseErr) {
                                   errorMsg = errorText || errorMsg;
                                 }
@@ -202,10 +208,17 @@ const App: React.FC = () => {
                               }
 
                               const data = await res.json();
-                              if (data.success) {
-                                alert('Sincronizarea a pornit în fundal. Vă rugăm să reveniți în câteva minute.');
+                              if (data.ok || data.success) {
+                                alert(data.message || 'Sincronizarea a pornit în fundal. Vă rugăm să reveniți în câteva minute.');
                               } else {
-                                alert('Eroare la pornirea sincronizării: ' + (data.error || 'Eroare necunoscută'));
+                                const rawError = data.error || data.message || 'Eroare necunoscută';
+                                let errorMsg = '';
+                                if (typeof rawError === 'object') {
+                                  errorMsg = rawError.message || rawError.error || JSON.stringify(rawError);
+                                } else {
+                                  errorMsg = String(rawError);
+                                }
+                                alert('Eroare la pornirea sincronizării: ' + errorMsg);
                               }
                             } catch (e) {
                               console.error("Fetch error:", e);

@@ -4,8 +4,17 @@ import { createServer as createViteServer } from "vite";
 import { runSyncPipeline } from "./utils/sync/syncPipeline";
 import { createClient } from "@supabase/supabase-js";
 
+// Ensure env vars are loaded if possible
+import { config as dotenvConfig } from "dotenv";
+dotenvConfig();
+
 const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://elfumzzbfrpqyaztxyee.supabase.co';
 const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || '...';
+
+console.log("[SERVER] Supabase URL:", supabaseUrl);
+console.log("[SERVER] Supabase Key defined:", !!supabaseKey && supabaseKey !== '...');
+console.log("[SERVER] runSyncPipeline type:", typeof runSyncPipeline);
+
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 async function startServer() {
@@ -117,22 +126,57 @@ async function startServer() {
     console.log("[SMOKE TEST] METHOD RECEIVED:", req.method);
     
     try {
-      console.log("[SMOKE TEST] REQUEST ACCEPTED - Scheduling sync");
+      console.log("[SMOKE TEST] PIPELINE START REQUESTED");
       
+      if (typeof runSyncPipeline !== 'function') {
+        throw new Error(`runSyncPipeline is not a function (type: ${typeof runSyncPipeline}). Check imports and exports.`);
+      }
+
+      // Check Supabase connectivity before starting
+      const { error: pingError } = await supabase.from('sync_runs').select('id').limit(1);
+      if (pingError) {
+        throw new Error(`Supabase connection error: ${pingError.message} (code: ${pingError.code})`);
+      }
+
       // Run in background
       runSyncPipeline()
         .then(() => console.log("[SMOKE TEST] SYNC PIPELINE FINISHED SUCCESSFULY"))
-        .catch(err => console.error("[SMOKE TEST] SYNC START FAILED (Pipeline Error):", err));
+        .catch(err => {
+          console.error("[SMOKE TEST] PIPELINE EXECUTION FAILED:", err);
+          // Note: This error happens AFTER the response is sent
+        });
       
-      console.log("[SMOKE TEST] RESPONSE SENT TO CLIENT");
+      console.log("[SMOKE TEST] RESPONSE 202 SENT");
       res.status(202).json({ 
-        success: true, 
+        ok: true,
+        status: "accepted",
         message: 'Sincronizarea a fost programată și rulează în fundal.',
         timestamp: new Date().toISOString()
       });
     } catch (error: any) {
-      console.error("[SMOKE TEST] TRIGGER FAILED:", error);
-      res.status(500).json({ success: false, error: error.message });
+      console.error("[SMOKE TEST] RESPONSE ERROR SENT:", error);
+      
+      // Extract as much info as possible from the error object
+      const errorInfo = {
+        message: error.message || "No message",
+        name: error.name || "Error",
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        stack: error.stack,
+        env_check: {
+          supabase_url: !!process.env.VITE_SUPABASE_URL,
+          supabase_key: !!process.env.VITE_SUPABASE_ANON_KEY && process.env.VITE_SUPABASE_ANON_KEY !== '...',
+          node_env: process.env.NODE_ENV
+        }
+      };
+
+      res.status(500).json({ 
+        ok: false,
+        status: "error",
+        message: "Eroare internă la pornirea sincronizării",
+        error: errorInfo
+      });
     }
   });
 

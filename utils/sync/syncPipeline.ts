@@ -9,19 +9,22 @@ const supabaseKey = process.env.VITE_SUPABASE_ANON_KEY || '...';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 export const runSyncPipeline = async () => {
-    console.log("[SMOKE TEST] runSyncPipeline INVOCATION START");
-    console.log("[DIAGNOSTIC] SYNC START");
-    // 1. Create sync_run
-    const { data: syncRun, error: syncRunError } = await supabase
-        .from('sync_runs')
-        .insert({ status: 'running', trigger_type: 'manual' })
-        .select()
-        .single();
-        
-    if (syncRunError || !syncRun) {
-        console.error("Failed to create sync run", syncRunError);
-        return;
-    }
+    try {
+        console.log("[SMOKE TEST] runSyncPipeline INVOCATION START");
+        console.log("[DIAGNOSTIC] SYNC START");
+        // 1. Create sync_run
+        const { data: syncRun, error: syncRunError } = await supabase
+            .from('sync_runs')
+            .insert({ status: 'running', trigger_type: 'manual' })
+            .select()
+            .single();
+            
+        if (syncRunError || !syncRun) {
+            console.error("[DIAGNOSTIC] Failed to create sync run record:", syncRunError);
+            return;
+        }
+
+        // ... rest of the function ...
 
     // 2. Fetch pricing rules
     const { data: rulesData } = await supabase.from('pricing_rules').select('*, source_settings(source_identifier)');
@@ -244,4 +247,8 @@ export const runSyncPipeline = async () => {
         total_invalid_products: totalInvalid,
         total_inserted_products: insertedCount
     }).eq('id', syncRun.id);
+
+    } catch (error: any) {
+        console.error("[DIAGNOSTIC] CRITICAL PIPELINE ERROR:", error);
+    }
 };
