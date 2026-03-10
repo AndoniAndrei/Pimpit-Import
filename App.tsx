@@ -189,6 +189,10 @@ const App: React.FC = () => {
                               });
                               
                               if (!res.ok) {
+                                if (res.status === 404) {
+                                  alert('Eroare: Ruta /api/admin/trigger-sync nu a fost găsită (404). Verificați deployment-ul Vercel.');
+                                  return;
+                                }
                                 const errorText = await res.text();
                                 let errorMsg = `Serverul a răspuns cu status ${res.status}`;
                                 try {
